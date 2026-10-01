@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Bill of Materials (Sample)</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+  <style>
+    .bom-tbl td input { min-height: 32px; padding: 5px 8px; font-size: 13px; }
+    .bom-tbl td.qty input { width: 70px; text-align: right; }
+    .bom-tbl td, .bom-tbl th { padding-left: 8px; padding-right: 8px; }
+    .bom-tbl td.st { white-space: nowrap; }
+    .bom-tbl td.desc input { min-width: 170px; }
+    .bom-tbl .issues { margin: 4px 0 0; padding-left: 16px; font-size: 11.5px; color: var(--amber); }
+    .bom-tbl tr.is-review td { background: #fffcf4; }
+    .bom-tbl .cat { font-weight: 600; font-size: 12.5px; }
+    .bom-tbl .cat.none { color: var(--amber); }
+  </style>
+</head>
+<body>
+  <template id="pageContent">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow" id="bomProject">Bill of materials</div>
+        <h2>Create or upload a BOM</h2>
+        <div class="sub">Start from your estimating export, then review each line before it goes into a request for quote.</div>
+      </div>
+      <div class="row">
+        <button class="btn btn-sm" id="bomTemplate" type="button">Download CSV template</button>
+        <button class="btn btn-sm btn-ghost" id="bomClear" type="button">Start over</button>
+      </div>
+    </div>
+    <div id="bomStepper"></div>
+
+    <div class="split">
+      <div>
+        <label class="dropzone" id="bomDrop" for="bomFile">
+          <div class="dz-ico">⇪</div>
+          <h3>Drop a CSV file here, or click to choose</h3>
+          <p>Columns: description, qty, unit. Files are read in your browser — nothing is uploaded.</p>
+          <input type="file" id="bomFile" accept=".csv,text/csv" style="display:none" />
+        </label>
+        <div class="row" style="margin:12px 0 0">
+          <button class="btn btn-sm btn-primary" id="bomSample" type="button">Use sample BOM</button>
+          <button class="btn btn-sm" id="bomAdd" type="button">Add a line</button>
+          <span class="muted" id="bomSource" style="font-size:12.5px"></span>
+        </div>
+
+        <div class="section-title" id="review">Review &amp; normalize <span class="sub">Matched to standard material categories — fix anything flagged</span></div>
+        <div id="bomTable"></div>
+      </div>
+      <div>
+        <div class="card" style="position:sticky;top:84px">
+          <div class="card-head"><h3>BOM summary</h3></div>
+          <div class="card-body" id="bomSummary"></div>
+          <div class="card-foot"><button class="btn btn-primary btn-block" id="bomContinue" type="button">Continue to RFQ →</button></div>
+        </div>
+      </div>
+    </div>
+  </template>
+  <script src="demo/rfq-sample-data.js"></script>
+  <script src="portal-common.js"></script>
+  <script src="demo/procurement-preview.js"></script>
+  <script src="contractor-bom.js"></script>
+</body>
+</html>

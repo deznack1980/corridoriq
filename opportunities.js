@@ -27,17 +27,17 @@
     return `<div class="company-card">
       <div class="cc-top">
         <div><div class="cc-name" style="font-size:15px">${CIQ.esc(p.job_address || p.permit_number || "Project")}</div>
-          <div class="cc-loc">${company} · ${CIQ.esc(p.jurisdiction || p.city || "")}</div></div>
-        <span class="score-chip">${p.opportunity_score != null ? Math.round(p.opportunity_score) : "—"}</span>
+          <div class="cc-loc">${company} · ${CIQ.esc(CIQ.placeName(p.jurisdiction) || p.city || "")}</div></div>
+        ${CIQ.bandBadge(p.opportunity_score)}
       </div>
       <div class="cc-meta">
         <div><span>Stage</span>${CIQ.esc(CIQ.titleCase(p.project_lifecycle || "—"))}</div>
         <div><span>Timing</span>${CIQ.esc(CIQ.titleCase(p.opportunity_timing || "—"))}</div>
-        <div><span>Trade scope</span>${CIQ.esc(p.trade_scope || "—")}</div>
+        <div><span>Trade</span>${CIQ.esc(CIQ.titleCase(p.trade_scope || "—"))}</div>
         <div><span>Category</span>${CIQ.esc(CIQ.titleCase(p.project_category || "—"))}</div>
         <div><span>Opportunity</span>${p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : "—"}</div>
         <div><span>Related permits</span>${p.permit_count != null ? p.permit_count : "—"}</div>
-        <div><span>Est. value</span>${p.estimated_material_value != null ? CIQ.money(p.estimated_material_value) : "—"}</div>
+        <div><span>Est. material value</span>${p.estimated_material_value != null ? CIQ.money(p.estimated_material_value) : "—"}</div>
       </div>
       ${p.account_relevance ? `<div>${CIQ.relevanceBadge(p.account_relevance)}</div>` : ""}
       ${contactLine(p)}
@@ -52,12 +52,12 @@
   function note(data) {
     const ctx = data.context || filters.context || "assigned";
     const bits = [CONTEXT_TEXT[ctx] || ctx];
-    bits.push(data.include_all_scopes ? "all scopes shown, including non-wet and off-focus projects"
-      : "projects naming only non-wet work, or from accounts outside the plumbing-supply focus, are hidden");
+    bits.push(data.include_all_scopes ? "all trades shown"
+      : "projects outside your trade focus are hidden");
     if (!data.include_all_scopes && data.hidden_by_checks)
-      bits.push(`${data.hidden_by_checks} hidden by those checks`);
+      bits.push(`${data.hidden_by_checks.toLocaleString("en-US")} not shown`);
     if (!data.include_all_scopes && data.scan_limit)
-      bits.push(`checked the top ${data.scan_limit.toLocaleString("en-US")} of ${Number(data.candidates).toLocaleString("en-US")} candidates by score`);
+      bits.push(`reviewed the top ${data.scan_limit.toLocaleString("en-US")} of ${Number(data.candidates).toLocaleString("en-US")} by priority`);
     document.getElementById("contextNote").textContent = bits.join(" · ") + ".";
   }
 

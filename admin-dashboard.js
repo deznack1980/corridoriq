@@ -40,14 +40,12 @@
   }
 
   const ACTIONS = [
-    ["opportunities.html", "View Projects"],
-    ["my-companies.html", "View Companies"],
-    ["opportunities.html", "Review Opportunities"],
-    ["assignments.html", "Assign Work"],
-    ["estimator-work-queue.html", "Review Estimates"],
-    ["user-management.html", "Manage Users"],
-    ["#run-refresh", "Run Morning Refresh"],
-    ["catalog-admin.html", "Open Administration"],
+    ["opportunities.html", "Review opportunities"],
+    ["my-companies.html", "View companies"],
+    ["assignments.html", "Assign work"],
+    ["estimator-work-queue.html", "Review estimates"],
+    ["user-management.html", "Manage users"],
+    ["catalog-admin.html", "Administration"],
   ];
 
   function renderActions() {
@@ -144,12 +142,12 @@
       return;
     }
     el.innerHTML = `<div class="table-wrap"><table class="tbl responsive"><thead><tr>
-      <th>Company</th><th>Jurisdiction</th><th>Lifecycle</th><th>Score</th><th>Date</th>
+      <th>Company</th><th>City</th><th>Stage</th><th>Priority</th><th>Date</th>
       </tr></thead><tbody>${items.map((o) => `<tr>
-        <td data-label="Company">${CIQ.esc(o.display_name || "—")}</td>
-        <td data-label="Jurisdiction">${CIQ.esc(o.jurisdiction || "—")}</td>
-        <td data-label="Lifecycle">${CIQ.esc(o.project_lifecycle || "—")}</td>
-        <td data-label="Score">${o.opportunity_score != null ? Math.round(o.opportunity_score) : "—"}</td>
+        <td data-label="Company">${o.company_id ? `<a href="sales-company-profile.html?id=${o.company_id}">${CIQ.esc(o.display_name || "—")}</a>` : (o.display_name ? CIQ.esc(o.display_name) : '<span class="muted">No contractor attributed</span>')}</td>
+        <td data-label="City">${CIQ.esc(CIQ.placeName(o.jurisdiction) || "—")}</td>
+        <td data-label="Stage">${CIQ.esc(CIQ.titleCase(o.project_lifecycle || "—"))}</td>
+        <td data-label="Priority">${CIQ.bandBadge(o.opportunity_score)}</td>
         <td data-label="Date">${o.opportunity_date ? CIQ.fmtDate(o.opportunity_date) : "—"}</td>
       </tr>`).join("")}</tbody></table></div>`;
   }
@@ -174,6 +172,7 @@
     await renderFeed();
     CIQ.renderTodaysAccounts(document.getElementById("todaysAccounts"), data.todays_accounts);
     renderActions();
+    CIQ.renderRfqEntry(document.getElementById("rfqEntry"));
     renderFreshness();
     renderPipeline();
     renderOpps();
@@ -186,6 +185,7 @@
       active: "admin-dashboard.html",
     });
     if (!user) return;
+    CIQ.renderHero();
     const btn = document.getElementById("runRefreshBtn");
     if (btn) {
       if (!CIQ.hasPerm("pipeline.run")) btn.style.display = "none";

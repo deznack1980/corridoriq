@@ -3,41 +3,56 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CorridorIQ — Administration</title>
+  <title>CorridorIQ — Supplier Command Center</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/vendor/leaflet-1.9.4/leaflet.css" />
   <link rel="stylesheet" href="portal.css" />
 </head>
 <body>
   <template id="pageContent">
-    <div class="page-head">
-      <div>
-        <div class="muted" style="font-size:13px">Organization-wide overview</div>
+    <section class="hero-band">
+      <div class="hero-top">
+        <div>
+          <div class="eyebrow" id="heroDate">Phoenix metro</div>
+          <h2 id="heroTitle">Supplier command center</h2>
+          <div class="hero-sub">Qualified accounts, live permit activity, and verified contacts across the organization — checked every morning.</div>
+        </div>
+        <div class="stack" style="align-items:flex-end;gap:12px">
+          <div id="refreshCard"></div>
+          <div class="hero-actions">
+            <a class="btn btn-sm" href="opportunities.html?context=organization">Review opportunities</a>
+            <a class="btn btn-sm" href="assignments.html">Assign work</a>
+            <button class="btn btn-sm btn-primary" id="runRefreshBtn" type="button">Run morning refresh</button>
+          </div>
+        </div>
       </div>
-      <div class="stack" style="flex-direction:row;gap:8px;flex-wrap:wrap">
-        <a class="btn btn-sm" href="opportunities.html">Review Opportunities</a>
-        <a class="btn btn-sm" href="assignments.html">Assign Work</a>
-        <button class="btn btn-sm btn-primary" id="runRefreshBtn" type="button">Run Morning Refresh</button>
+      <div id="execStrip"></div>
+    </section>
+
+    <div class="section-title">Today's accounts <span class="sub">Accounts that passed today's checks — the list is never padded</span></div>
+    <div id="todaysAccounts"></div>
+
+    <div class="section-title">Opportunity map</div>
+    <div id="mapWorkspace" class="card card-pad map-workspace"></div>
+
+    <div class="split">
+      <div>
+        <div class="section-title" style="margin-top:4px">Recent opportunity activity</div>
+        <div id="opps"></div>
+      </div>
+      <div>
+        <div class="section-title" style="margin-top:4px">Procurement</div>
+        <div id="rfqEntry"></div>
+        <div class="section-title">Quick actions</div>
+        <div id="actions" class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px;margin-bottom:18px"></div>
       </div>
     </div>
 
-    <div id="refreshCard"></div>
-    <div id="execStrip"></div>
-    <div id="mapWorkspace" class="card card-pad map-workspace"></div>
-
-    <div class="section-title">Checked accounts to act on today</div>
-    <div id="todaysAccounts"></div>
-
-    <div class="section-title">Quick actions</div>
-    <div id="actions" class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px;margin-bottom:18px"></div>
-
-    <div class="section-title">Jurisdiction freshness</div>
-    <div id="freshness"></div>
-
-    <div class="section-title">Recent pipeline activity</div>
-    <div id="pipeline"></div>
-
-    <div class="section-title">Recent opportunity activity</div>
-    <div id="opps"></div>
+    <div class="section-title">Operations <span class="sub">Source freshness and refresh history</span></div>
+    <div class="split-even">
+      <div><div class="eyebrow" style="margin-bottom:8px">Jurisdiction freshness</div><div id="freshness"></div></div>
+      <div><div class="eyebrow" style="margin-bottom:8px">Recent pipeline activity</div><div id="pipeline"></div></div>
+    </div>
   </template>
   <script src="assets/vendor/leaflet-1.9.4/leaflet.js"></script>
   <script src="portal-common.js"></script>

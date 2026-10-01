@@ -38,10 +38,10 @@
       : `<b>No contractor attributed</b>`;
     const approx = p.precision === "source_state_plane" ? `<div class="muted" style="font-size:11px">Location converted from the city's state-plane coordinates.</div>` : "";
     return `<div class="map-pop">${company}
-      <div>${CIQ.esc(p.job_address || p.permit_number || "")} · ${CIQ.esc(p.jurisdiction || "")}</div>
-      <div><span class="muted">Trade scope:</span> ${CIQ.esc(p.trade_scope || "—")}</div>
-      <div><span class="muted">Score:</span> ${p.opportunity_score != null ? Math.round(p.opportunity_score) : "—"}
-        · <span class="muted">Date:</span> ${p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : "—"}</div>
+      <div>${CIQ.esc(p.job_address || p.permit_number || "")} · ${CIQ.esc(CIQ.placeName(p.jurisdiction))}</div>
+      <div><span class="muted">Trade:</span> ${CIQ.esc(CIQ.titleCase(p.trade_scope || "—"))}</div>
+      <div style="margin-top:4px">${CIQ.bandBadge(p.opportunity_score)}
+        <span class="muted" style="margin-left:6px">${p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : ""}</span></div>
       <div style="margin-top:4px">${contactHtml(p.contact)}</div>${approx}</div>`;
   }
 
@@ -56,13 +56,13 @@
     const orgAllowed = CIQ.hasPerm("companies.view");
     root.innerHTML = `
       <div class="mw-head">
-        <div><h2>Phoenix opportunity map</h2><div class="sub mw-summary">Loading…</div></div>
+        <div><h2>Phoenix metro · live permit activity</h2><div class="sub mw-summary">Loading…</div></div>
         <div class="mw-controls">
           <select class="mw-context">
             <option value="assigned">My / assigned companies</option>
             ${orgAllowed ? '<option value="organization">Organization (last 60 days)</option>' : ""}
           </select>
-          <label class="muted"><input type="checkbox" class="mw-scope"> Include all scopes</label>
+          <label class="muted"><input type="checkbox" class="mw-scope"> Include all trades</label>
           <a class="btn btn-sm mw-viewall" href="#">View all</a>
         </div>
       </div>
@@ -136,7 +136,7 @@
       state.today.forEach((a) => {
         const loc = a.project && a.project.location;
         if (!loc) return;
-        L.circleMarker([loc.lat, loc.lon], { radius: 13, weight: 3, color: "#16a34a", fill: false })
+        L.circleMarker([loc.lat, loc.lon], { radius: 13, weight: 3, color: "#13855a", fill: false })
           .bindPopup(`<div class="map-pop"><b>Today: ${CIQ.esc(a.display_name)}</b><div>${CIQ.esc(a.action)} · ${CIQ.esc(a.trade)}</div>
             <div style="margin-top:4px">${CIQ.esc(a.why_now)}</div></div>`)
           .addTo(state.layer);
@@ -148,16 +148,16 @@
         return CIQ.emptyState({ compact: true, icon: "◎", title: "No opportunities in this view",
           text: feed.empty_message || "No opportunities match." });
       }
-      return `<div class="mw-feed-head muted">Top ${Math.min(FEED_SIZE, feed.items.length)} by score · same set as the map</div>` +
+      return `<div class="mw-feed-head muted">Top ${Math.min(FEED_SIZE, feed.items.length)} by priority · same set as the map</div>` +
         feed.items.map((p) => `
         <div class="mw-item${p.location ? "" : " is-unplaced"}" data-pid="${p.project_id}">
           <div class="mw-item-top">
             <span class="mw-dot" style="background:${colorFor(p.trade_scope)}"></span>
             <b>${p.company_id ? CIQ.esc(p.display_name || "Company") : "No contractor attributed"}</b>
-            <span class="score-chip">${p.opportunity_score != null ? Math.round(p.opportunity_score) : "—"}</span>
+            ${CIQ.bandBadge(p.opportunity_score)}
           </div>
-          <div class="muted">${CIQ.esc(p.job_address || p.permit_number || "")} · ${CIQ.esc(p.jurisdiction || "")}</div>
-          <div>${CIQ.esc(p.trade_scope || "—")}${p.location ? "" : ' · <span class="badge amber">Location not available</span>'}</div>
+          <div class="muted">${CIQ.esc(p.job_address || p.permit_number || "")} · ${CIQ.esc(CIQ.placeName(p.jurisdiction))}</div>
+          <div>${CIQ.esc(CIQ.titleCase(p.trade_scope || "—"))}${p.location ? "" : ' · <span class="badge amber">Location not available</span>'}</div>
           <div class="mw-item-contact">${contactHtml(p.contact)}</div>
         </div>`).join("");
     }
@@ -180,13 +180,13 @@
       state.points = layer.points || [];
       state.today = o.todaysAccounts || [];
       const unplacedBits = Object.entries(layer.unplaced_by_jurisdiction || {})
-        .map(([j, n]) => `${n.toLocaleString("en-US")} ${j.replace("_az", "").replace(/_/g, " ")}`).join(", ");
+        .map(([j, n]) => `${n.toLocaleString("en-US")} ${CIQ.placeName(j)}`).join(", ");
       const fmt = (n) => Number(n || 0).toLocaleString("en-US");
       $(".mw-summary").textContent = `${fmt(layer.total)} opportunities · `
-        + `${fmt(layer.placed)} on the map · ${fmt(layer.unplaced)} without a published location`
-        + (layer.not_loaded ? ` · ${fmt(layer.not_loaded)} beyond the top ${fmt(layer.scan_limit)} by score not mapped` : "")
-        + (layer.scan_limit && !state.scope ? ` · checked the top ${fmt(layer.scan_limit)} of ${fmt(layer.candidates)} candidates by score` : "")
-        + (state.scope ? " · all scopes" : " · non-wet and off-focus hidden");
+        + `${fmt(layer.placed)} mapped · ${fmt(layer.unplaced)} without a published location`
+        + (layer.not_loaded ? ` · ${fmt(layer.not_loaded)} lower-priority not mapped` : "")
+        + (layer.scan_limit && !state.scope ? ` · reviewed the top ${fmt(layer.scan_limit)} of ${fmt(layer.candidates)} by priority` : "")
+        + (state.scope ? " · all trades" : " · trade-relevant only");
       const todayUnplaced = state.today.filter((a) => !(a.project && a.project.location)).map((a) => a.display_name);
       $(".mw-foot").textContent = [layer.location_note,
         unplacedBits ? `Not placed: ${unplacedBits}.` : "",

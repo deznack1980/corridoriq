@@ -41,11 +41,11 @@
       oel.innerHTML = CIQ.emptyState({ title: "No recent opportunity activity" });
     } else {
       oel.innerHTML = `<div class="table-wrap"><table class="tbl responsive"><thead><tr>
-        <th>Company</th><th>Lifecycle</th><th>Score</th>
+        <th>Company</th><th>Lifecycle</th><th>Priority</th>
         </tr></thead><tbody>${opps.map((o) => `<tr>
           <td data-label="Company">${CIQ.esc(o.display_name || "—")}</td>
           <td data-label="Lifecycle">${CIQ.esc(o.project_lifecycle || "—")}</td>
-          <td data-label="Score">${o.opportunity_score != null ? Math.round(o.opportunity_score) : "—"}</td>
+          <td data-label="Priority">${CIQ.bandBadge(o.opportunity_score)}</td>
         </tr>`).join("")}</tbody></table></div>`;
     }
   }

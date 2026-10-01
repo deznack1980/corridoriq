@@ -39,7 +39,7 @@
           <h1 style="font-size:23px">${CIQ.esc(c.display_name || c.legal_name || "Company")}</h1>
           <div class="ph-meta">
             <span>${CIQ.esc(loc)}</span>
-            <span>${CIQ.priorityBadge(ci.company_priority_tier, ci.company_priority_score)}</span>
+            <span>${CIQ.priorityBadge(ci.company_priority_tier)}</span>
             <span>${CIQ.statusBadge(r.relationship_status || "new")}</span>
             <span>Rep: <b>${CIQ.esc(repName(r.assigned_user_id))}</b></span>
           </div>
@@ -101,8 +101,8 @@
           ${metric(ci.active_projects, "Active projects")}
           ${metric(ci.projects_last_30_days, "Last 30 days")}
           ${metric(ci.municipality_count, "Municipalities")}
-          ${metric(ci.average_opportunity_score != null ? Math.round(ci.average_opportunity_score) : null, "Avg opp score")}
-          ${metric(ci.highest_opportunity_score != null ? Math.round(ci.highest_opportunity_score) : null, "Top opp score")}
+          ${metric(ci.highest_opportunity_score != null ? CIQ.bandBadge(ci.highest_opportunity_score) : null, "Top project")}
+          ${metric(ci.projects_last_90_days, "Last 90 days")}
         </div>
         ${tot ? `<div style="margin-top:14px">
           <div class="spread" style="font-size:12.5px;color:var(--text-3)"><span>Commercial ${comm}</span><span>Residential ${res}</span></div>
@@ -118,7 +118,7 @@
       <div class="cc-top">
         <div><div class="cc-name" style="font-size:14.5px">${CIQ.esc(p.job_address || p.permit_number || p.jurisdiction || "Project")}</div>
           <div class="cc-loc">${CIQ.esc([p.jurisdiction, p.city].filter(Boolean).join(" · ") || "")}</div></div>
-        <span class="score-chip">${p.opportunity_score != null ? Math.round(p.opportunity_score) : "—"}</span>
+        ${CIQ.bandBadge(p.opportunity_score)}
       </div>
       <div class="cc-meta">
         <div><span>Stage</span>${CIQ.esc(CIQ.titleCase(p.project_lifecycle || "—"))}</div>
@@ -260,7 +260,7 @@
     if (!p) return;
     const rows = [["Address", p.job_address], ["Municipality", p.jurisdiction], ["City", p.city],
       ["Lifecycle stage", CIQ.titleCase(p.project_lifecycle || "")], ["Category", CIQ.titleCase(p.project_category || "")],
-      ["Opportunity score", p.opportunity_score != null ? Math.round(p.opportunity_score) : "—"],
+      ["Priority", CIQ.oppBand(p.opportunity_score).label],
       ["Opportunity timing", CIQ.titleCase(p.opportunity_timing || "")],
       ["Opportunity date", p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : "—"],
       ["Permit #", p.permit_number], ["Est. material value", p.estimated_material_value != null ? CIQ.money(p.estimated_material_value) : "—"]];

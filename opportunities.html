@@ -4,25 +4,35 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CorridorIQ — Opportunities</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="portal.css" />
 </head>
 <body>
   <template id="pageContent">
-    <div class="filters">
-      <select id="fcontext" title="Which opportunities this view covers">
-        <option value="assigned">My / assigned companies</option>
-      </select>
-      <label class="muted" style="display:flex;align-items:center;gap:6px">
-        <input type="checkbox" id="fscope" /> Include all scopes
-      </label>
-      <input type="search" id="fq" placeholder="Search address, city, company…" />
-      <select id="flifecycle"><option value="">All stages</option></select>
-      <select id="fscore">
-        <option value="">Any score</option>
-        <option value="80">80+</option><option value="60">60+</option><option value="40">40+</option>
-      </select>
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Projects & permits</div>
+        <h2>Opportunities</h2>
+        <div class="sub">Live projects that create material demand — ranked by priority, with the contractor and a verified contact where one exists.</div>
+      </div>
     </div>
-    <div id="contextNote" class="muted" style="margin:6px 0 12px"></div>
+    <div class="toolbar">
+      <div class="filters">
+        <select id="fcontext" title="Which opportunities this view covers">
+          <option value="assigned">My / assigned companies</option>
+        </select>
+        <input type="search" id="fq" placeholder="Search address, city, company…" />
+        <select id="flifecycle"><option value="">All stages</option></select>
+        <select id="fscore">
+          <option value="">Any priority</option>
+          <option value="85">High priority</option><option value="70">Priority and above</option>
+        </select>
+        <label class="muted" style="display:flex;align-items:center;gap:6px;font-size:13px">
+          <input type="checkbox" id="fscope" /> Include all trades
+        </label>
+      </div>
+    </div>
+    <div id="contextNote" class="muted" style="margin:0 0 14px;font-size:12.5px"></div>
     <div id="list"></div>
     <div class="pager" id="pager"></div>
   </template>

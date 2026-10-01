@@ -53,7 +53,32 @@
   };
 
   /* ---- Navigation config (role-aware) ------------------------------- */
-  function navForUser() {
+  // Procurement preview: front-end-only sample screens (no API writes), shown
+  // to administrators only until the RFQ backend exists.
+  const PREVIEW_GROUP = { label: "Procurement preview", items: [
+    { href: "rfq-inbox.html", label: "RFQ Inbox", icon: "✉", perm: "admin.system", tag: "Sample" },
+    { href: "contractor-dashboard.html", label: "Contractor portal", icon: "⬒", perm: "admin.system", tag: "Sample" },
+  ] };
+
+  // Contractor portal (prototype). Every page in it is sample data.
+  function contractorNav() {
+    return [
+      { label: null, items: [
+        { href: "contractor-dashboard.html", label: "Dashboard", icon: "▦" },
+        { href: "contractor-bom.html", label: "Bill of materials", icon: "☰" },
+        { href: "contractor-rfq.html", label: "Create RFQ", icon: "✚" },
+        { href: "contractor-rfqs.html", label: "RFQs & status", icon: "⇄" },
+        { href: "contractor-quotes.html", label: "Compare quotes", icon: "⚖" },
+      ] },
+      { label: "Supplier side", items: [
+        { href: "rfq-inbox.html", label: "Supplier RFQ inbox", icon: "✉" },
+        { href: CIQ.landingPage(), label: "Back to supplier portal", icon: "←" },
+      ] },
+    ];
+  }
+
+  function navForUser(portal) {
+    if (portal === "contractor") return contractorNav();
     const roles = (CIQ.user && CIQ.user.roles) || [];
     const landing = (CIQ.user && CIQ.user.default_landing_page) || "sales-dashboard.html";
     const isAdmin = roles.includes("admin") || CIQ.hasPerm("admin.system");
@@ -65,16 +90,18 @@
       return [
         { label: null, items: [
           { href: "admin-dashboard.html", label: "Dashboard", icon: "▦" },
+          { href: "opportunities.html", label: "Opportunities", icon: "◎", perm: "projects.view" },
           { href: "my-companies.html", label: "Companies", icon: "⌂", perm: "companies.view" },
-          { href: "opportunities.html", label: "Projects", icon: "◎", perm: "projects.view" },
-          { href: "opportunities.html", label: "Opportunities", icon: "⚡", perm: "projects.view" },
           { href: "estimator-work-queue.html", label: "Estimates", icon: "$", perm: "projects.view" },
+          { href: "reports.html", label: "Reports", icon: "⊟", perm: "reports.view" },
+        ] },
+        { label: "Team", items: [
           { href: "assignments.html", label: "Assignments", icon: "⇄", perm: "companies.assign" },
           { href: "team-dashboard.html", label: "Team", icon: "☰", perm: "users.view" },
-          { href: "reports.html", label: "Reports", icon: "⊟", perm: "reports.view" },
           { href: "user-management.html", label: "Users", icon: "⦿", perm: "users.create" },
           { href: "catalog-admin.html", label: "Administration", icon: "⚙", perm: "admin.system" },
         ] },
+        PREVIEW_GROUP,
       ];
     }
     if (isManager) {
@@ -119,7 +146,7 @@
         { href: "my-companies.html", label: "My Companies", icon: "⌂", perm: "crm.relationships.view" },
         { href: "my-tasks.html", label: "Tasks", icon: "✓", perm: "crm.tasks.view" },
         { href: "activity.html", label: "Activity", icon: "≣", perm: "crm.activities.view" },
-        { href: "opportunities.html", label: "Estimates", icon: "$", perm: "projects.view_assigned" },
+        { href: "opportunities.html", label: "Opportunities", icon: "◎", perm: "projects.view_assigned" },
       ] },
       { label: "More", items: [
         { href: "reports.html", label: "Reports", icon: "⊟", perm: "reports.view" },
@@ -128,9 +155,9 @@
     ];
   }
 
-  function navHtml(active) {
+  function navHtml(active, portal) {
     let out = "";
-    for (const group of navForUser()) {
+    for (const group of navForUser(portal)) {
       const items = group.items.filter((i) => !i.perm || CIQ.hasPerm(i.perm));
       if (!items.length) continue;
       if (group.label) out += `<div class="nav-group-label">${group.label}</div>`;
@@ -138,11 +165,32 @@
         const hrefBase = (i.href || "").split("#")[0];
         const on = active === i.href || active === hrefBase ? " active" : "";
         return `<a class="nav-item${on}" href="${i.href}">
-          <span class="ico" aria-hidden="true">${i.icon}</span>${CIQ.esc(i.label)}</a>`;
+          <span class="ico" aria-hidden="true">${i.icon}</span>${CIQ.esc(i.label)}${i.tag ? `<span class="tag">${CIQ.esc(i.tag)}</span>` : ""}</a>`;
       }).join("");
     }
     return out;
   }
+
+  // Temporary vector mark (final logo artwork pending): a corridor of three
+  // ascending bars on the brand-blue tile.
+  CIQ.BRAND_MARK = `<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <path d="M3 15.5 L9.2 4.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M10.4 15.5 L16.6 4.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".55"/>
+    <circle cx="16.6" cy="4.5" r="1.9" fill="#5fd3a0"/></svg>`;
+  CIQ.BRAND_DESCRIPTOR = "Construction Intelligence + Procurement";
+
+  function portalLabel(portal) {
+    if (portal === "contractor") return `<div class="portal-label contractor"><i></i>Contractor portal · Preview</div>`;
+    const roles = (CIQ.user && CIQ.user.roles) || [];
+    if (roles.includes("admin") || CIQ.hasPerm("admin.system")) return `<div class="portal-label"><i></i>Supplier portal · Admin</div>`;
+    return `<div class="portal-label"><i></i>Supplier portal</div>`;
+  }
+
+  // Banner for prototype screens. The sample data never comes from, or goes
+  // to, the API; this marks every such screen unmistakably.
+  CIQ.SAMPLE_BANNER = `<div class="sample-banner" role="note" id="ciqSampleBanner">
+    <strong>Sample data — demonstration only</strong>
+    <span>Fictional contractor, suppliers, prices and quotes. Nothing on this screen is sent, saved, or purchased.</span></div>`;
 
   function initials(name) {
     const parts = (name || "?").trim().split(/\s+/);
@@ -150,7 +198,8 @@
       (parts[1] ? parts[1][0].toUpperCase() : "");
   }
 
-  function primaryRole() {
+  function primaryRole(portal) {
+    if (portal === "contractor") return "Previewing as contractor";
     const r = (CIQ.user && CIQ.user.roles) || [];
     const map = { admin: "Administrator", sales_manager: "Sales Manager",
       sales_representative: "Sales Rep", estimator: "Estimator",
@@ -165,13 +214,15 @@
     app.innerHTML = `
       <div class="scrim" id="ciqScrim"></div>
       <aside class="sidebar" id="ciqSidebar">
-        <div class="sidebar-brand">
-          <div class="brand-mark">CIQ</div>
-          <div class="brand-text"><div class="t">CorridorIQ</div><div class="s">Sales Workspace</div></div>
-        </div>
-        <nav class="nav">${navHtml(opts.active)}</nav>
+        <a class="sidebar-brand" href="${CIQ.esc(opts.portal === "contractor" ? "contractor-dashboard.html" : CIQ.landingPage())}">
+          <div class="brand-mark">${CIQ.BRAND_MARK}</div>
+          <div class="brand-text"><div class="t">CorridorIQ</div><div class="s">${CIQ.esc(CIQ.BRAND_DESCRIPTOR)}</div></div>
+        </a>
+        ${portalLabel(opts.portal)}
+        <nav class="nav">${navHtml(opts.active, opts.portal)}</nav>
         <div class="sidebar-foot">
           <a class="nav-item" href="#" id="ciqSignout"><span class="ico">⇥</span>Sign out</a>
+          <div class="domain">CorridorIQ.pro</div>
         </div>
       </aside>
       <div class="main">
@@ -181,17 +232,18 @@
             <h1>${CIQ.esc(opts.title || "")}</h1>
             ${opts.subtitle ? `<div class="subtitle">${CIQ.esc(opts.subtitle)}</div>` : ""}
           </div>
-          <form class="topbar-search" id="ciqSearchForm">
+          <form class="topbar-search" id="ciqSearchForm"${opts.portal === "contractor" ? ' style="visibility:hidden"' : ""}>
             <span class="si">⌕</span>
             <input type="search" id="ciqSearch" placeholder="Search companies…" autocomplete="off" />
           </form>
           <div class="topbar-actions">
-            <button class="icon-btn" id="ciqTasksBtn" title="Tasks" aria-label="Tasks">✓</button>
+            ${opts.sample ? '<span class="sample-pill" title="Fictional demonstration data">Sample data</span>' : ""}
+            <button class="icon-btn" id="ciqTasksBtn" title="Tasks" aria-label="Tasks"${opts.portal === "contractor" ? ' style="display:none"' : ""}>✓</button>
             <div class="profile" id="ciqProfile" tabindex="0">
               <div class="avatar">${CIQ.esc(initials(CIQ.user.display_name || CIQ.user.email))}</div>
               <div class="stack">
                 <span class="profile-name">${CIQ.esc(CIQ.user.display_name || CIQ.user.email)}</span>
-                <span class="profile-role">${CIQ.esc(primaryRole())}</span>
+                <span class="profile-role">${CIQ.esc(primaryRole(opts.portal))}</span>
               </div>
               <div class="menu" id="ciqMenu">
                 <a href="login.html?change=1">Change password</a>
@@ -208,6 +260,7 @@
     document.body.appendChild(app);
     let host = document.getElementById("toastHost");
     if (!host) { host = document.createElement("div"); host.id = "toastHost"; document.body.appendChild(host); }
+    if (opts.sample) app.querySelector("#content").insertAdjacentHTML("beforeend", CIQ.SAMPLE_BANNER);
     if (tpl) app.querySelector("#content").appendChild(tpl.content.cloneNode(true));
 
     // Wire shell interactions.
@@ -445,10 +498,9 @@
   CIQ.statusBadge = (s) =>
     `<span class="badge ${STATUS_COLOR[s] || "slate"}"><span class="dot"></span>${CIQ.esc(CIQ.statusLabel(s))}</span>`;
   CIQ.tierBadge = (t) => t ? `<span class="badge ${TIER_COLOR[t] || "slate"}">${CIQ.esc(t)}</span>` : "";
-  CIQ.scoreChip = (v) => v == null ? '<span class="muted">—</span>' :
-    `<span class="score-chip">${Math.round(v)}</span>`;
-  CIQ.priorityBadge = (tier, score) =>
-    `${CIQ.tierBadge(tier)} ${score != null ? `<span class="score-chip muted">${Math.round(score)}</span>` : ""}`;
+  // Supplier-facing screens show priority labels, never the underlying number.
+  CIQ.scoreChip = (v) => CIQ.bandBadge(v);
+  CIQ.priorityBadge = (tier) => CIQ.tierBadge(tier);
 
   CIQ.activityLabel = (t) => ({
     call: "Call", voicemail: "Voicemail", email: "Email", text_message: "Text",
@@ -585,8 +637,9 @@
     el.className = "grid-cards";
     el.innerHTML = status + items.map((a) => {
       const pr = a.project || {};
-      const list = (xs) => (xs || []).map((x) => `<li>${CIQ.esc(x)}</li>`).join("");
-      return `<div class="company-card">
+      const list = (xs) => (xs || []).map((x) => `<li>${CIQ.esc(CIQ.cleanText(x))}</li>`).join("");
+      const checks = (a.verify_before_contact || []).length + (a.uncertainty || []).length;
+      return `<div class="company-card acct-card">
         <div class="cc-top">
           <div>
             <div class="cc-name"><a href="sales-company-profile.html?id=${a.company_id}">${CIQ.esc(a.display_name)}</a></div>
@@ -594,18 +647,21 @@
           </div>
           <div class="stack" style="align-items:flex-end;gap:6px">
             <span class="badge green">${CIQ.esc(a.action)}</span>
-            <span class="badge slate">Confidence ${CIQ.esc(a.confidence)}</span>
+            <span class="badge outline">${CIQ.esc(a.confidence)} confidence</span>
           </div>
         </div>
-        <div class="cc-reason">${CIQ.esc(a.why_now)}</div>
+        <div class="acct-why"><b>Why now</b>${CIQ.esc(CIQ.cleanText(a.why_now))}</div>
         <div class="cc-meta">
-          <div><span>Trade</span>${CIQ.esc(a.trade)}</div>
-          <div><span>Permit</span>${CIQ.esc(pr.permit_number || "—")} · ${CIQ.esc(pr.activity_date || "—")}</div>
-          <div><span>Identity</span>${CIQ.esc(a.identity)}</div>
+          <div><span>Trade</span>${CIQ.esc(CIQ.titleCase(a.trade || "—"))}</div>
+          <div><span>Permit</span>${CIQ.esc(pr.permit_number || "—")} · ${CIQ.esc(pr.activity_date ? CIQ.fmtDate(pr.activity_date) : "—")}</div>
+          <div><span>Business identity</span>${CIQ.esc(a.identity)}</div>
+          <div><span>Contact</span>${CIQ.esc(a.contact || "—")}</div>
         </div>
         ${CIQ.verifiedContactBlock(a.contact_details, { compact: true, show: a.action === "Email" ? "email" : "phone" })}
-        ${a.uncertainty && a.uncertainty.length ? `<div class="muted"><strong>Uncertain:</strong><ul>${list(a.uncertainty)}</ul></div>` : ""}
-        <div class="muted"><strong>Verify before contact:</strong><ul>${list(a.verify_before_contact)}</ul></div>
+        ${checks ? `<details><summary>Before you call · ${checks} check${checks === 1 ? "" : "s"}</summary>
+          ${a.uncertainty && a.uncertainty.length ? `<div style="margin-top:6px"><strong>Uncertain</strong><ul class="cc-list">${list(a.uncertainty)}</ul></div>` : ""}
+          ${(a.verify_before_contact || []).length ? `<div style="margin-top:6px"><strong>Verify before contact</strong><ul class="cc-list">${list(a.verify_before_contact)}</ul></div>` : ""}
+        </details>` : ""}
       </div>`;
     }).join("");
   };
@@ -668,14 +724,26 @@
     return { label: [who || "Business line", how].filter(Boolean).join(" · "), named: true, phone: c.phone || "" };
   };
 
+  // Customer-facing priority band. Presentation only: the underlying number
+  // and ranking are unchanged and never rendered on supplier screens.
   CIQ.oppBand = function (score) {
-    if (score == null || score === "") return { key: "none", label: "—", score: null };
+    if (score == null || score === "") return { key: "none", label: "Not rated", score: null };
     const n = Number(score);
-    if (!isFinite(n)) return { key: "none", label: "—", score: null };
-    if (n >= 85) return { key: "high", label: "High", score: n };
+    if (!isFinite(n)) return { key: "none", label: "Not rated", score: null };
+    if (n >= 85) return { key: "high", label: "High priority", score: n };
     if (n >= 70) return { key: "mid", label: "Priority", score: n };
-    return { key: "low", label: "Watch", score: n };
+    return { key: "low", label: "Monitor", score: n };
   };
+  CIQ.bandBadge = function (score) {
+    const b = CIQ.oppBand(score);
+    return `<span class="band ${b.key}">${CIQ.esc(b.label)}</span>`;
+  };
+
+  // Readable place names for jurisdiction codes in server text ("phoenix_az").
+  CIQ.placeName = (j) => CIQ.titleCase(String(j || "").replace(/_az$/i, "").replace(/_/g, " "));
+  CIQ.cleanText = (s) => String(s || "")
+    .replace(/\(([a-z]+(?:_[a-z]+)*)_az\)/g, (m, city) => "(" + CIQ.placeName(city) + ")")
+    .replace(/\b([a-z]+(?:_[a-z]+)*)_az\b/g, (m, city) => CIQ.placeName(city));
 
   CIQ.oppSignals = function (p, contact) {
     const out = [];
@@ -779,7 +847,7 @@
         </div>
         <div>
           <div class="opp-val${hasVal ? "" : " is-empty"}" title="${hasVal ? CIQ.esc(CIQ.money(p.estimated_material_value)) : ""}">${hasVal ? CIQ.esc(CIQ.moneyCompact(p.estimated_material_value)) : "—"}</div>
-          <div class="opp-val-k">${band.score != null ? Math.round(band.score) + " · " + CIQ.esc(band.label) : "Est. value"}</div>
+          <div class="opp-val-k">${band.score != null ? CIQ.esc(band.label) : "Est. value"}</div>
         </div>
         <div class="opp-contact-col">
           <div class="opp-contact${contact.named ? "" : " is-missing"}">${CIQ.esc(contact.label)}</div>
@@ -789,6 +857,41 @@
       </article>`;
     }).join("");
     el.innerHTML = `${head}<div class="opp-feed">${rows}</div>`;
+  };
+
+  /* ---- Dashboard hero + procurement entry --------------------------- */
+  CIQ.greeting = function () {
+    const h = new Date().getHours();
+    return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  };
+  CIQ.renderHero = function (opts) {
+    const o = opts || {};
+    const date = document.getElementById("heroDate");
+    const title = document.getElementById("heroTitle");
+    const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    if (date) date.textContent = `${today} · ${o.region || "Phoenix metro"}`;
+    const dn = (CIQ.user && CIQ.user.display_name) || "";
+    const first = (CIQ.user && CIQ.user.first_name) || (dn && !dn.includes("@") ? dn.split(" ")[0] : "");
+    if (title) title.textContent = `${CIQ.greeting()}${first ? ", " + first : ""}.`;
+  };
+
+  // RFQ inbox entry. Administrators see the sample preview; everyone else sees
+  // nothing until supplier RFQ participation exists.
+  CIQ.renderRfqEntry = function (el) {
+    if (!el) return;
+    if (!CIQ.hasPerm("admin.system")) { el.style.display = "none"; return; }
+    el.innerHTML = `<div class="card">
+      <div class="card-head"><div><h3>RFQ inbox</h3><div class="sub">Contractor requests for quote</div></div>
+        <span class="sample-pill">Sample</span></div>
+      <div class="card-body" style="font-size:13px;color:var(--text-2)">
+        Contractor RFQs are in early access. Preview the supplier side of the planned workflow with sample data —
+        no real RFQs, quotes, or supplier responses exist yet.
+      </div>
+      <div class="card-foot row">
+        <a class="btn btn-sm btn-primary" href="rfq-inbox.html">Open RFQ inbox</a>
+        <a class="btn btn-sm btn-ghost" href="contractor-dashboard.html">Contractor view</a>
+      </div>
+    </div>`;
   };
 
   CIQ.pager = function (el, { page, pages, total, onPage }) {

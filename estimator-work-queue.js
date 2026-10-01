@@ -17,13 +17,13 @@
       return CIQ.emptyState({ title: emptyTitle, text: "Nothing in this list right now." });
     }
     return `<div class="table-wrap"><table class="tbl responsive"><thead><tr>
-      <th>Permit</th><th>Company</th><th>Location</th><th>Lifecycle</th><th>Score</th>
+      <th>Permit</th><th>Company</th><th>Location</th><th>Lifecycle</th><th>Priority</th>
       </tr></thead><tbody>${items.map((r) => `<tr>
         <td data-label="Permit">${CIQ.esc(r.permit_number || "#" + r.project_id)}</td>
         <td data-label="Company">${CIQ.esc(r.company_name || "—")}</td>
         <td data-label="Location">${CIQ.esc([r.city, r.job_address].filter(Boolean).join(" · ") || "—")}</td>
         <td data-label="Lifecycle">${CIQ.esc(r.project_lifecycle || "—")}</td>
-        <td data-label="Score">${r.opportunity_score != null ? Math.round(r.opportunity_score) : "—"}</td>
+        <td data-label="Priority">${CIQ.bandBadge(r.opportunity_score)}</td>
       </tr>`).join("")}</tbody></table></div>`;
   }
 

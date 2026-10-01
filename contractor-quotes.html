@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Compare Quotes (Sample)</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+  <style>
+    .q-card { display: flex; flex-direction: column; }
+    .q-card .q-total { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .q-card .q-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; min-height: 22px; }
+    .q-card .card-foot { margin-top: auto; }
+    .q-card.is-sel { border-color: var(--signal); box-shadow: 0 0 0 3px rgba(19,133,90,.18); }
+    .q-card.is-sel .card-head { background: var(--signal-soft); }
+    .cmp td.best .px { color: var(--signal-strong); font-weight: 700; }
+    .cmp td .px { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .cmp td .ext { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+    .cmp td.sup { text-align: right; white-space: nowrap; }
+    .cmp th.sup { text-align: right; }
+    .cmp td .badge { height: 19px; font-size: 10.5px; margin-top: 3px; }
+    .cmp td.sel-col, .cmp th.sel-col { background: #f3faf6; }
+    .cmp .item { min-width: 240px; }
+    .sel-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+      background: var(--signal-soft); border: 1px solid #b9e0cd; color: var(--signal-strong); border-radius: var(--radius);
+      padding: 14px 18px; margin-bottom: 18px; }
+    .sel-banner b { color: var(--text); }
+  </style>
+</head>
+<body>
+  <template id="pageContent">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow" id="qRfq">Quote comparison</div>
+        <h2>Compare quotes</h2>
+        <div class="sub">Totals include delivery. Lines a supplier didn't quote are excluded from that supplier's total and flagged.</div>
+      </div>
+      <div class="row"><a class="btn btn-sm" href="contractor-rfqs.html">← RFQ status</a></div>
+    </div>
+    <div id="qStepper"></div>
+    <div id="qSelected"></div>
+    <div class="grid-3" id="select"></div>
+    <div class="section-title">Line-by-line comparison <span class="sub">Unit price · extended price · availability</span></div>
+    <div id="qTable"></div>
+  </template>
+  <script src="demo/rfq-sample-data.js"></script>
+  <script src="portal-common.js"></script>
+  <script src="demo/procurement-preview.js"></script>
+  <script src="contractor-quotes.js"></script>
+</body>
+</html>

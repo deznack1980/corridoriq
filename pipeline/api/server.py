@@ -35,12 +35,41 @@ from pipeline.reports import catalog as reports_catalog
 from pipeline import pipeline_runs
 from pipeline.db.database import get_connection, init_db
 
-HOST = "127.0.0.1"
-PORT = settings.SALES_API_PORT
+import os
+
+# Bind address/port. Defaults are unchanged (loopback only); a hosted
+# deployment sets these explicitly, normally still behind a reverse proxy.
+HOST = os.environ.get("CORRIDORIQ_HOST", "127.0.0.1")
+PORT = int(os.environ.get("CORRIDORIQ_PORT", settings.SALES_API_PORT))
 COOKIE = settings.SESSION_COOKIE_NAME
 
 # Portal files served same-origin (allowlist by extension + known names).
 _STATIC_SUFFIXES = (".html", ".js", ".css")
+
+# Public site entry point ("/" and the old "/index.html").
+_HOME_PAGE = "home.html"
+
+# Legacy static pages from the original pitch site. They read files this server
+# never serves (data/exports/*.json) or a different API, so they are not served.
+_LEGACY_UNSERVED = {
+    "dashboard.html", "dashboard.js", "contractors.html", "contractors.js",
+    "companies.html", "companies.js", "company-profile.html", "company-profile.js",
+    "job.html", "job.js", "knowledge.html", "knowledge.js", "script.js", "style.css",
+}
+
+# Files below the project root are served only from these folders, and only
+# with these types. Everything else in a subdirectory is never served.
+_ASSET_TYPES = {
+    ".css": "text/css", ".js": "application/javascript",
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+    ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8",
+}
+_SUBDIR_RULES = {
+    "assets": set(_ASSET_TYPES),
+    # Front-end sample data for the procurement preview. Fictional by design.
+    "demo": {".js"},
+}
 _PORTAL_PAGES = {
     "login.html", "sales-dashboard.html", "sales-dashboard.js",
     "my-companies.html", "my-companies.js", "sales-company-profile.html",
@@ -70,6 +99,43 @@ _ADMIN_USER_RE = re.compile(rf"^/api/admin/users/{_ID}$")
 def _factory():
     """Connection factory (overridable in tests)."""
     return get_connection()
+
+
+def static_target(path: str):
+    """(file, content type) for a static request, or (None, None).
+
+    Top level: .html/.js/.css only, excluding the legacy pitch-site pages.
+    Subdirectories: only those in _SUBDIR_RULES, only their allowed types.
+    The resolved file must stay inside the project root."""
+    from urllib.parse import unquote
+
+    name = unquote(path).lstrip("/")
+    if name in ("", "index.html"):
+        name = _HOME_PAGE
+    if "\\" in name or "\x00" in name:
+        return None, None
+    parts = name.split("/")
+    if any(p in ("", ".", "..") or p.startswith(".") for p in parts):
+        return None, None
+    suffix = os.path.splitext(name)[1].lower()
+    if len(parts) == 1:
+        if name in _LEGACY_UNSERVED:
+            return None, None
+        if name not in _PORTAL_PAGES and suffix not in _STATIC_SUFFIXES:
+            return None, None
+        ctype = ("text/html; charset=utf-8" if suffix == ".html"
+                 else "application/javascript" if suffix == ".js" else "text/css")
+    else:
+        allowed = _SUBDIR_RULES.get(parts[0])
+        if not allowed or suffix not in allowed:
+            return None, None
+        ctype = _ASSET_TYPES[suffix]
+    root = settings.PROJECT_ROOT.resolve()
+    target = (root / name).resolve()
+    # Prevent path traversal outside the project root.
+    if root not in target.parents or not target.is_file():
+        return None, None
+    return target, ctype
 
 
 def _launch_morning_refresh(user_id: int) -> None:
@@ -188,23 +254,21 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     # ---- static portal ----------------------------------------------------
     def _serve_static(self, path: str) -> bool:
-        name = path.lstrip("/") or "login.html"
-        if name in ("", "index.html"):
-            name = "login.html"
-        if name not in _PORTAL_PAGES and not name.endswith(_STATIC_SUFFIXES):
+        target, ctype = static_target(path)
+        if target is None:
             return False
-        target = (settings.PROJECT_ROOT / name).resolve()
-        # Prevent path traversal outside the project root.
-        if settings.PROJECT_ROOT not in target.parents or not target.is_file():
-            return False
-        ctype = ("text/html" if name.endswith(".html")
-                 else "application/javascript" if name.endswith(".js")
-                 else "text/css")
         data = target.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
+        # Fonts and images are immutable per deploy; pages and code revalidate.
+        if ctype.startswith(("image/", "font/")):
+            self.send_header("Cache-Control", "public, max-age=86400")
+        else:
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(data)
         return True

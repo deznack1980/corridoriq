@@ -51,7 +51,7 @@
       <div class="cc-reason">${CIQ.esc(c.reason)}</div>
       <div class="cc-meta">
         <div><span>Active projects</span>${c.active_projects || 0}</div>
-        <div><span>Top project score</span>${c.highest_opportunity_score != null ? Math.round(c.highest_opportunity_score) : "—"}</div>
+        <div><span>Top project</span>${CIQ.bandBadge(c.highest_opportunity_score)}</div>
         <div><span>Last contact</span>${c.last_contact_at ? CIQ.relTime(c.last_contact_at) : "Never"}</div>
         <div><span>Next follow-up</span>${c.next_followup_at ? CIQ.fmtDate(c.next_followup_at) : "—"} ${overdue}</div>
       </div>
@@ -171,6 +171,7 @@
     renderFeed(companies);
     CIQ.renderTodaysAccounts(document.getElementById("todaysAccounts"), data.todays_accounts);
     renderPriority(); renderFollowups(); renderSummary();
+    CIQ.renderRfqEntry(document.getElementById("rfqEntry"));
     renderRefresh();
   }
 
@@ -186,6 +187,7 @@
         return;
       }
     }
+    CIQ.renderHero();
     document.getElementById("execStrip").innerHTML = CIQ.skeletonRows(1);
     document.getElementById("priority").innerHTML = CIQ.skeletonRows(2);
     load();

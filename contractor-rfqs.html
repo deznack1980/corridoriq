@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — RFQ Status (Sample)</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+</head>
+<body>
+  <template id="pageContent">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Requests for quote</div>
+        <h2>RFQs &amp; status</h2>
+        <div class="sub">Track which suppliers have viewed, declined, or quoted each request.</div>
+      </div>
+      <div class="row"><a class="btn btn-sm" href="contractor-rfq.html">New RFQ</a></div>
+    </div>
+    <div id="rfqsStepper"></div>
+    <div id="rfqsNote"></div>
+    <div id="rfqsActive"></div>
+    <div class="section-title">RFQ history</div>
+    <div id="rfqsHistory"></div>
+  </template>
+  <script src="demo/rfq-sample-data.js"></script>
+  <script src="portal-common.js"></script>
+  <script src="demo/procurement-preview.js"></script>
+  <script src="contractor-rfqs.js"></script>
+</body>
+</html>

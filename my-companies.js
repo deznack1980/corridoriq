@@ -58,7 +58,7 @@
         <div><span>Last contact</span>${c.last_contact_at ? CIQ.relTime(c.last_contact_at) : "Never"}</div>
         <div><span>Next follow-up</span>${c.next_followup_at ? CIQ.fmtDate(c.next_followup_at) : "—"} ${overdue}</div>
         ${repRow}
-        <div><span>Top score</span>${c.highest_opportunity_score != null ? Math.round(c.highest_opportunity_score) : "—"}</div>
+        <div><span>Top project</span>${CIQ.bandBadge(c.highest_opportunity_score)}</div>
       </div>
       <div class="cc-action"><span>Next:</span> <span class="next">${CIQ.esc(c.recommended_action)}</span></div>
       <div class="cc-quick">

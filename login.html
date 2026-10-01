@@ -4,60 +4,112 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CorridorIQ — Sign in</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="portal.css" />
   <style>
-    body { background: linear-gradient(160deg, #0e1116 0%, #171b22 60%, #1f2530 100%); min-height: 100vh; display: grid; place-items: center; }
-    .auth-wrap { width: 100%; max-width: 400px; padding: 20px; }
-    .brand { display: flex; align-items: center; gap: 12px; justify-content: center; margin-bottom: 22px; color: #fff; }
-    .brand .brand-mark { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color: var(--ink); font-weight: 900; display: grid; place-items: center; }
-    .brand .t { font-weight: 700; font-size: 18px; } .brand .s { font-size: 12px; color: var(--on-dark-dim); }
-    .auth-card { background: var(--surface); border-radius: var(--radius); padding: 30px; box-shadow: var(--shadow-lg); }
-    .auth-card h1 { font-size: 21px; margin-bottom: 4px; }
-    .auth-card p.sub { color: var(--text-3); margin: 0 0 20px; font-size: 13.5px; }
-    .auth-field { margin-bottom: 15px; }
+    body { background: var(--navy-950); min-height: 100vh; }
+    .auth { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(420px, .9fr); min-height: 100vh; }
+    .auth-side {
+      position: relative; overflow: hidden; color: var(--on-dark); padding: 44px 56px; display: flex; flex-direction: column;
+      background: var(--navy-950);
+      background-image: radial-gradient(900px 500px at 80% 10%, rgba(33,96,212,.32), transparent 60%),
+                        radial-gradient(600px 360px at 0% 100%, rgba(19,133,90,.14), transparent 60%),
+                        linear-gradient(180deg, var(--navy-900), var(--navy-950));
+    }
+    .auth-side::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 48px 48px; mask-image: linear-gradient(180deg, transparent, #000 40%, #000); -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%, #000);
+    }
+    .auth-side > * { position: relative; z-index: 1; }
+    .brand { display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none; }
+    .brand:hover { text-decoration: none; }
+    .brand img { width: 34px; height: 34px; }
+    .brand .t { font-weight: 700; font-size: 18px; letter-spacing: -0.015em; } .brand .s { font-size: 11px; color: var(--on-dark-dim); }
+    .auth-pitch { margin-top: auto; margin-bottom: auto; max-width: 520px; padding: 40px 0; }
+    .auth-pitch .k { font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; color: var(--accent-on-dark); }
+    .auth-pitch h2 { color: #fff; font-size: 38px; line-height: 1.1; letter-spacing: -0.03em; margin: 14px 0 16px; font-weight: 670; }
+    .auth-pitch p { color: #b0bdd2; font-size: 16px; line-height: 1.6; margin: 0; }
+    .auth-points { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 10px; }
+    .auth-points li { display: flex; gap: 10px; align-items: center; color: #d5deec; font-size: 14px; }
+    .auth-points li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--signal-on-dark); flex: none; }
+    .auth-foot { font-size: 12px; color: #6f7f98; }
+    .auth-main { background: var(--bg); display: grid; place-items: center; padding: 32px 24px; }
+    .auth-wrap { width: 100%; max-width: 400px; }
+    .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 34px 32px; box-shadow: var(--shadow); }
+    .auth-card h1 { font-size: 23px; margin-bottom: 4px; letter-spacing: -0.02em; }
+    .auth-card p.sub { color: var(--text-3); margin: 0 0 24px; font-size: 13.5px; }
+    .auth-field { margin-bottom: 16px; }
     .auth-field label { display: block; font-size: 12.5px; margin-bottom: 6px; color: var(--text-2); font-weight: 600; }
+    .auth-field input { height: 42px; font-size: 14.5px; }
+    .auth-card .btn-block { height: 44px; font-size: 14.5px; margin-top: 4px; }
     .auth-msg { margin-top: 14px; font-size: 13.5px; min-height: 18px; }
-    .auth-msg.error { color: var(--red); } .auth-msg.ok { color: var(--green); }
-    .auth-note { text-align: center; margin-top: 16px; font-size: 12px; color: var(--on-dark-dim); }
+    .auth-msg.error { color: var(--red); } .auth-msg.ok { color: var(--signal); }
+    .auth-note { text-align: center; margin-top: 18px; font-size: 12px; color: var(--text-3); }
+    .auth-alt { display: flex; justify-content: space-between; margin-top: 18px; font-size: 12.5px; }
+    @media (max-width: 900px) {
+      .auth { grid-template-columns: 1fr; }
+      .auth-side { padding: 24px 22px; }
+      .auth-pitch, .auth-foot { display: none; }
+      .auth-main { align-items: start; padding-top: 28px; }
+    }
   </style>
 </head>
 <body>
-  <div class="auth-wrap">
-    <div class="brand">
-      <div class="brand-mark">CIQ</div>
-      <div><div class="t">CorridorIQ</div><div class="s">Secure Sales Workspace</div></div>
-    </div>
+  <div class="auth">
+    <aside class="auth-side">
+      <a class="brand" href="/">
+        <img src="assets/brand/corridoriq-mark.svg" alt="" />
+        <div><div class="t">CorridorIQ</div><div class="s">Construction Intelligence + Procurement</div></div>
+      </a>
+      <div class="auth-pitch">
+        <div class="k">Supplier workspace</div>
+        <h2>Construction intelligence for the wet side.</h2>
+        <p>Trade-checked accounts, permit context, and verified-contact discipline for plumbing and wet-side supply houses.</p>
+        <ul class="auth-points">
+          <li>Accounts that passed today&#39;s checks</li>
+          <li>Phoenix-metro opportunity map</li>
+          <li>Contacts shown as usable only when verified</li>
+        </ul>
+      </div>
+      <div class="auth-foot">CorridorIQ.pro</div>
+    </aside>
 
-    <div class="auth-card" id="loginCard">
-      <h1>Sign in</h1>
-      <p class="sub">Employee access only. All activity is audited.</p>
-      <div class="error-banner" id="expiredBanner" style="display:none">Your session expired. Please sign in again.</div>
-      <div class="error-banner" id="originBanner" style="display:none">Open the portal at <b>http://127.0.0.1:8780/login.html</b> (not a file:// path or another server).</div>
-      <form id="loginForm" action="javascript:void(0)" method="post" onsubmit="return false">
-        <div class="auth-field"><label for="email">Email</label>
-          <input type="email" id="email" autocomplete="username" required /></div>
-        <div class="auth-field"><label for="password">Password</label>
-          <input type="password" id="password" autocomplete="current-password" required /></div>
-        <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Sign in</button>
-      </form>
-      <div class="auth-msg" id="loginMsg"></div>
-    </div>
+    <main class="auth-main">
+      <div class="auth-wrap">
+        <div class="auth-card" id="loginCard">
+          <h1>Sign in</h1>
+          <p class="sub">Access is limited to authorized users. Activity is audited.</p>
+          <div class="error-banner" id="expiredBanner" style="display:none">Your session expired. Please sign in again.</div>
+          <div class="error-banner" id="originBanner" style="display:none">This page could not reach the CorridorIQ server. Open the sign-in page from the CorridorIQ site address (not a saved file or another server).</div>
+          <form id="loginForm" action="javascript:void(0)" method="post" onsubmit="return false">
+            <div class="auth-field"><label for="email">Work email</label>
+              <input type="email" id="email" autocomplete="username" required /></div>
+            <div class="auth-field"><label for="password">Password</label>
+              <input type="password" id="password" autocomplete="current-password" required /></div>
+            <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Sign in</button>
+          </form>
+          <div class="auth-msg" id="loginMsg"></div>
+        </div>
 
-    <div class="auth-card" id="changeCard" style="display:none;">
-      <h1>Set a new password</h1>
-      <p class="sub">You must change your temporary password before continuing.</p>
-      <form id="changeForm" action="javascript:void(0)" method="post" onsubmit="return false">
-        <div class="auth-field"><label for="curPw">Current / temporary password</label>
-          <input type="password" id="curPw" autocomplete="current-password" required /></div>
-        <div class="auth-field"><label for="newPw">New password (min 8 characters)</label>
-          <input type="password" id="newPw" autocomplete="new-password" required minlength="8" /></div>
-        <div class="auth-field"><label for="newPw2">Confirm new password</label>
-          <input type="password" id="newPw2" autocomplete="new-password" required minlength="8" /></div>
-        <button type="submit" class="btn btn-primary btn-block" id="changeBtn">Update password</button>
-      </form>
-      <div class="auth-msg" id="changeMsg"></div>
-    </div>
-    <div class="auth-note">Protected by session security and role-based access control.</div>
+        <div class="auth-card" id="changeCard" style="display:none;">
+          <h1>Set a new password</h1>
+          <p class="sub">You must change your temporary password before continuing.</p>
+          <form id="changeForm" action="javascript:void(0)" method="post" onsubmit="return false">
+            <div class="auth-field"><label for="curPw">Current / temporary password</label>
+              <input type="password" id="curPw" autocomplete="current-password" required /></div>
+            <div class="auth-field"><label for="newPw">New password (min 8 characters)</label>
+              <input type="password" id="newPw" autocomplete="new-password" required minlength="8" /></div>
+            <div class="auth-field"><label for="newPw2">Confirm new password</label>
+              <input type="password" id="newPw2" autocomplete="new-password" required minlength="8" /></div>
+            <button type="submit" class="btn btn-primary btn-block" id="changeBtn">Update password</button>
+          </form>
+          <div class="auth-msg" id="changeMsg"></div>
+        </div>
+        <div class="auth-alt"><a href="/">&larr; CorridorIQ.pro</a><a href="for-suppliers.html#walkthrough">Need access?</a></div>
+        <div class="auth-note">Protected by session security and role-based access control.</div>
+      </div>
+    </main>
   </div>
 
   <script>
@@ -135,7 +187,7 @@
               // Non-JSON response => this page isn't talking to the CorridorIQ
               // server. Point the user at the correct URL instead of a vague error.
               originBanner.style.display = "block";
-              loginMsg.textContent = "Open http://127.0.0.1:8780/login.html (the CorridorIQ server did not respond).";
+              loginMsg.textContent = "The CorridorIQ server did not respond. Open the sign-in page from the CorridorIQ site address.";
             } else {
               loginMsg.textContent = (data && data.error) || "Sign in failed.";
             }
@@ -149,7 +201,7 @@
             window.location.href = dest.startsWith("/") ? dest : ("/" + dest);
           }
         } catch (err) {
-          loginMsg.textContent = "Could not reach the server. Confirm the portal is running at http://127.0.0.1:8780.";
+          loginMsg.textContent = "Could not reach the CorridorIQ server. Check your connection and try again.";
           loginMsg.className = "auth-msg error";
         } finally { btn.disabled = false; }
       });

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Contractor Dashboard (Sample)</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+</head>
+<body>
+  <template id="pageContent">
+    <section class="hero-band">
+      <div class="hero-top">
+        <div>
+          <div class="eyebrow" id="cdEyebrow">Contractor workspace</div>
+          <h2 id="cdTitle">Contractor</h2>
+          <div class="hero-sub" id="cdSub"></div>
+        </div>
+        <div class="hero-actions">
+          <a class="btn btn-sm" href="contractor-quotes.html">Compare quotes</a>
+          <a class="btn btn-sm btn-primary" href="contractor-bom.html">Upload a BOM</a>
+        </div>
+      </div>
+      <div id="cdStrip" class="dash-strip"></div>
+    </section>
+
+    <div class="section-title">Procurement workflow <span class="sub">Bill of materials to supplier selection</span></div>
+    <div id="cdStepper"></div>
+
+    <div class="split">
+      <div>
+        <div class="section-title" style="margin-top:4px">Active RFQ</div>
+        <div id="cdActive"></div>
+        <div class="section-title">RFQ history</div>
+        <div id="cdHistory"></div>
+      </div>
+      <div>
+        <div class="section-title" style="margin-top:4px">Start here</div>
+        <div id="cdStart"></div>
+        <div class="section-title">Project</div>
+        <div id="cdProject"></div>
+      </div>
+    </div>
+  </template>
+  <script src="demo/rfq-sample-data.js"></script>
+  <script src="portal-common.js"></script>
+  <script src="demo/procurement-preview.js"></script>
+  <script src="contractor-dashboard.js"></script>
+</body>
+</html>

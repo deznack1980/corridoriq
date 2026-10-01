@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Create RFQ (Sample)</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+</head>
+<body>
+  <template id="pageContent">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow" id="rfqProject">Request for quote</div>
+        <h2>Create a request for quote</h2>
+        <div class="sub">One request, sent only to the participating suppliers you choose. Each supplier sees only its own quote.</div>
+      </div>
+    </div>
+    <div id="rfqStepper"></div>
+    <div id="rfqNote"></div>
+
+    <div class="split">
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head"><h3>Request details</h3></div>
+          <div class="card-body">
+            <form class="form-grid" id="rfqForm" onsubmit="return false">
+              <label class="fld full">RFQ title<input id="rfqTitle" /></label>
+              <label class="fld">Project<input id="rfqProj" readonly /></label>
+              <label class="fld">Delivery location<input id="rfqLoc" readonly /></label>
+              <label class="fld">Quotes due<input type="date" id="rfqDue" /></label>
+              <label class="fld">Materials needed by<input type="date" id="rfqNeed" /></label>
+              <label class="fld">Fulfillment
+                <select id="rfqFulfil"><option>Delivered to site</option><option>Will-call pickup</option></select></label>
+              <label class="fld">Substitutions
+                <select id="rfqSubs"><option>Allowed with approval</option><option>Not allowed</option></select></label>
+              <label class="fld full">Notes to suppliers<textarea id="rfqNotes" placeholder="Site access, delivery windows, staging…"></textarea></label>
+            </form>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head"><div><h3>Participating suppliers</h3><div class="sub">Only suppliers that accept CorridorIQ RFQs can be selected</div></div></div>
+          <div class="card-body"><div class="grid-3" id="rfqSuppliers"></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div><h3>Items in this request</h3><div class="sub" id="rfqItemsSub"></div></div>
+            <a class="btn btn-sm btn-ghost" href="contractor-bom.html#review">Edit BOM</a></div>
+          <div id="rfqItems"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="position:sticky;top:84px">
+          <div class="card-head"><h3>Ready to send</h3></div>
+          <div class="card-body" id="rfqSummary"></div>
+          <div class="card-foot"><button class="btn btn-positive btn-block" id="rfqSend" type="button">Send RFQ</button>
+            <div class="muted" style="font-size:11.5px;margin-top:8px;text-align:center">Preview only — nothing is sent.</div></div>
+        </div>
+      </div>
+    </div>
+  </template>
+  <script src="demo/rfq-sample-data.js"></script>
+  <script src="portal-common.js"></script>
+  <script src="demo/procurement-preview.js"></script>
+  <script src="contractor-rfq.js"></script>
+</body>
+</html>
