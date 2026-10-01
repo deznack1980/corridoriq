@@ -99,7 +99,8 @@ function renderTable(payload) {
         <td><a class="company-name-link" href="company-profile.html?id=${c.id}">${esc(c.display_name || "—")}</a>
             <div>${roles}</div></td>
         <td>${esc(c.company_type_primary || "—")}</td>
-        <td><span class="tier-badge tier-${esc(tier)}">${fmtScore(c.company_priority_score)} · ${esc(tier)}</span></td>
+        <td><span class="tier-badge tier-${esc(tier)}">${fmtScore(c.company_priority_score)} · ${esc(tier)}</span>
+            ${c.account_relevance ? `<div class="muted" style="font-size:12px">${esc(c.account_relevance.label)}</div>` : ""}</td>
         <td>${fmtNum(c.active_projects)}</td>
         <td>${fmtNum(c.projects_last_30_days)}</td>
         <td>${fmtScore(c.average_opportunity_score)}</td>

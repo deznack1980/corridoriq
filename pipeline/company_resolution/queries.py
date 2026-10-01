@@ -88,6 +88,11 @@ def list_companies(conn: sqlite3.Connection, filters: dict) -> dict:
         params,
     ).fetchone()["n"]
 
+    # Order and label by account relevance from the shared trust layer.
+    from pipeline.trust import account_view as trust
+    from pipeline.trust.public import public_relevance
+
+    rel_join, rel_rank, rel_params = trust.relevance_sql("c.id")
     rows = conn.execute(
         f"""
         SELECT c.id, c.display_name, c.normalized_name, c.city, c.state,
@@ -100,18 +105,22 @@ def list_companies(conn: sqlite3.Connection, filters: dict) -> dict:
                ci.latest_activity_date, ci.estimated_opportunity_total
         FROM companies c
         LEFT JOIN company_intelligence ci ON ci.company_id=c.id
+        {rel_join}
         WHERE {where_sql}
-        ORDER BY COALESCE(ci.company_priority_score,0) DESC,
+        ORDER BY {rel_rank} ASC, {trust.within_account_order()},
+                 COALESCE(ci.company_priority_score,0) DESC,
                  ci.latest_activity_date DESC, c.display_name
         LIMIT ? OFFSET ?
         """,
-        [*params, page_size, (page - 1) * page_size],
+        [*rel_params, *params, page_size, (page - 1) * page_size],
     ).fetchall()
 
+    relevance = trust.relevance_for(conn, [r["id"] for r in rows])
     items = []
     for r in rows:
         d = dict(r)
         d["roles"] = _roles_for(conn, r["id"])
+        d["account_relevance"] = public_relevance(relevance.get(r["id"]))
         items.append(d)
     return {
         "total": total,

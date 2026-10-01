@@ -282,6 +282,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._json(200, crm.list_my_companies(conn, user, query))
         if path == "/api/sales/opportunities":
             return self._json(200, crm.opportunities(conn, user, query))
+        if path == "/api/sales/opportunities/map":
+            return self._json(200, crm.opportunity_map(conn, user, query))
         if path == "/api/sales/activity":
             return self._json(200, crm.my_activity(conn, user, query))
         if path == "/api/sales/followups":
@@ -423,6 +425,11 @@ class ApiHandler(BaseHTTPRequestHandler):
 def main():
     init_db()  # ensure schema + seed once at startup
     server = ThreadingHTTPServer((HOST, PORT), ApiHandler)
+    # Pre-compute Today's Accounts and the organization opportunity scan after
+    # each refresh (and at startup) so the first dashboard visit is not cold.
+    from pipeline.api import warmer
+    if warmer.enabled():
+        warmer.CacheWarmer(settings.DB_PATH).start()
     print(f"CorridorIQ secure portal + API on http://{HOST}:{PORT}")
     print(f"  Portal login:  http://{HOST}:{PORT}/login.html")
     print("  POST /api/auth/login | logout | change-password ; GET /api/auth/me")

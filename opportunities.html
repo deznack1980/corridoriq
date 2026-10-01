@@ -9,6 +9,12 @@
 <body>
   <template id="pageContent">
     <div class="filters">
+      <select id="fcontext" title="Which opportunities this view covers">
+        <option value="assigned">My / assigned companies</option>
+      </select>
+      <label class="muted" style="display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="fscope" /> Include all scopes
+      </label>
       <input type="search" id="fq" placeholder="Search address, city, company…" />
       <select id="flifecycle"><option value="">All stages</option></select>
       <select id="fscore">
@@ -16,6 +22,7 @@
         <option value="80">80+</option><option value="60">60+</option><option value="40">40+</option>
       </select>
     </div>
+    <div id="contextNote" class="muted" style="margin:6px 0 12px"></div>
     <div id="list"></div>
     <div class="pager" id="pager"></div>
   </template>

@@ -1,0 +1,43 @@
+{
+  "model_version": "sales-trial-v1",
+  "after_kpis": {
+    "n": 25,
+    "counts": {
+      "has_phone": 24,
+      "has_email": 13,
+      "has_website": 22,
+      "has_named": 14,
+      "has_purchasing_ops": 0,
+      "actionable": 24,
+      "verified": 19,
+      "no_contact": 1
+    },
+    "pct": {
+      "has_phone": 96.0,
+      "has_email": 52.0,
+      "has_website": 88.0,
+      "has_named": 56.0,
+      "has_purchasing_ops": 0.0,
+      "actionable": 96.0,
+      "verified": 76.0
+    }
+  },
+  "callability_counts": {
+    "CALL_NOW": 14,
+    "CALL_WITH_CAUTION": 10,
+    "NO_ACTIONABLE_CONTACT": 1
+  },
+  "guardrails": {
+    "after": {
+      "projects": 116336,
+      "relevance_rows": 116336,
+      "priority_rows": 11274,
+      "roc_enabled": 0,
+      "crm_relationships": 1,
+      "merged_companies": 0
+    }
+  },
+  "outcomes_design": {
+    "status": "DESIGN_ONLY"
+  }
+}

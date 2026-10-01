@@ -20,6 +20,9 @@ class ConnectorResult:
     jurisdiction_slug: str
     records: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    # Rows the source actually returned, before exact duplicates were dropped.
+    source_row_count: int = 0
+    duplicates_dropped: int = 0
 
     @property
     def fetched_count(self) -> int:
@@ -63,16 +66,47 @@ class BaseConnector(ABC):
         return {k: None for k in PERMIT_FIELDS}
 
     def run(self, since: Optional[datetime] = None) -> ConnectorResult:
+        """Fetch and map, dropping rows that are exact duplicates.
+
+        Some published layers contain the same record more than once. Chandler's
+        DSActiveProjects layer returns 170 rows for 85 permits: every permit
+        appears exactly twice, identical in all attributes and geometry, and
+        differing only in OBJECTID (an Esri internal row id).
+
+        Only EXACT duplicates are dropped. Two rows sharing a permit number but
+        disagreeing on any mapped field are both kept - that is a real source
+        conflict and must stay visible rather than being quietly resolved here.
+        """
         result = ConnectorResult(jurisdiction_slug=self.jurisdiction_slug)
+        seen: dict = {}
         for raw in self.fetch_raw(since=since):
+            result.source_row_count += 1
             try:
                 mapped = self.map_record(raw)
                 mapped["jurisdiction"] = self.jurisdiction_slug
                 mapped["raw_source_json"] = _safe_json(raw)
-                result.records.append(mapped)
             except Exception as exc:  # noqa: BLE001 - one bad record must not kill the run
                 result.errors.append(f"{type(exc).__name__}: {exc}")
+                continue
+
+            key = mapped.get("permit_number")
+            if key is not None:
+                fingerprint = _fingerprint(mapped)
+                if seen.get(key) == fingerprint:
+                    result.duplicates_dropped += 1
+                    continue
+                seen[key] = fingerprint
+            result.records.append(mapped)
         return result
+
+
+def _fingerprint(mapped: dict) -> tuple:
+    """Identity of a mapped record across the fields we actually store.
+
+    Excludes raw_source_json, because the source-internal row id it contains
+    (OBJECTID) is exactly what makes duplicate rows look distinct.
+    """
+    return tuple(mapped.get(f) for f in PERMIT_FIELDS)
 
 
 def _safe_json(raw: dict) -> str:

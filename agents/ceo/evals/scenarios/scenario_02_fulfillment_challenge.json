@@ -1,0 +1,12 @@
+{
+  "id": "scenario_02_fulfillment_challenge",
+  "question": "Let's spend the next week building the full fulfillment marketplace before calling contractors.",
+  "expect": {
+    "action_id": "run_learning_trial",
+    "bottleneck": "CUSTOMER_VALIDATION",
+    "engineering": false,
+    "cursor_brief": false,
+    "text_all": ["hypothesis", "manual"],
+    "evidence_category": "INTERNAL_HYPOTHESIS"
+  }
+}

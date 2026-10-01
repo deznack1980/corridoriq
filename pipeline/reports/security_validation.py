@@ -74,6 +74,19 @@ INTELLIGENCE_READONLY_TABLES = [
     "company_intelligence", "company_activity", "company_match_review_queue",
     "company_identity_audit_log", "projects", "permits",
     "status_dictionary", "permit_code_dictionary", "keyword_dictionary",
+    "company_capabilities", "company_capability_evidence",
+    "enrichment_source_registry", "company_enrichment",
+    "customer_relevance_profiles", "project_customer_relevance",
+    "project_demand_labels", "company_customer_priority",
+    "roc_import_runs", "roc_licenses", "roc_classification_map",
+    "roc_company_matches", "roc_identity_validations",
+    "roc_contact_candidates", "roc_duplicate_candidates",
+    "canonical_companies", "company_entity_links",
+    "entity_duplicate_reviews", "entity_match_overrides",
+    "company_contact_channels",
+    "sales_identity_reviews", "sales_person_reviews", "sales_account_reviews",
+    "sales_lanes", "company_sales_lanes", "sales_lane_books",
+    "sales_lane_snapshots", "sales_callability", "sales_presentation_notes",
 ]
 EXPECTED_AUDIT_EVENTS = [
     "login_success", "login_failure", "logout", "password_changed",
@@ -86,6 +99,8 @@ SENSITIVE_FIELDS = [
     "session token / cookie value", "authentication secrets", "API keys",
     "database file paths", "environment variables", "internal scoring weights",
     "restricted supplier cost files", "raw security logs",
+    "enrichment source families", "contractor capability methodology",
+    "roc source internals", "license classification map",
 ]
 
 

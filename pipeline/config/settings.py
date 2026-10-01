@@ -1,11 +1,58 @@
 """Paths and shared constants for the CorridorIQ pipeline."""
 
+import os as _os
+import sys as _sys
 from pathlib import Path
 
 PIPELINE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = PIPELINE_DIR.parent
 
-DB_PATH = PIPELINE_DIR / "db" / "corridoriq.db"
+# ---------------------------------------------------------------
+# Operational data location.
+#
+# The database must NOT live inside a cloud-synced folder. A multi-hundred-MB
+# SQLite file under continuous sync, with a scheduled writer and a long-lived
+# server process, risks partial-file sync and journal/WAL divergence. It also
+# must not live in the repo, so backups and git stay independent.
+#
+# Resolution order:
+#   1. CORRIDORIQ_DB_PATH   — full path to the .db file (wins outright)
+#   2. CORRIDORIQ_DATA_DIR  — data root; db lives in <root>/db/corridoriq.db
+#   3. platform default     — C:\CorridorIQData (Windows) | ~/.local/share/corridoriq
+#
+# ``scripts/migrate_database_location.py`` moves an existing in-repo database
+# to this location; ``python -m pipeline.db.doctor`` verifies the result.
+# ---------------------------------------------------------------
+
+LEGACY_DB_PATH = PIPELINE_DIR / "db" / "corridoriq.db"
+
+
+def _default_data_dir() -> Path:
+    if _sys.platform == "win32":
+        return Path(_os.environ.get("SystemDrive", "C:") + "\\") / "CorridorIQData"
+    return Path.home() / ".local" / "share" / "corridoriq"
+
+
+def _resolve_data_dir() -> Path:
+    configured = _os.environ.get("CORRIDORIQ_DATA_DIR")
+    return Path(configured).expanduser() if configured else _default_data_dir()
+
+
+def _resolve_db_path() -> Path:
+    configured = _os.environ.get("CORRIDORIQ_DB_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    return DATA_DIR / "db" / "corridoriq.db"
+
+
+DATA_DIR = _resolve_data_dir()
+DB_PATH = _resolve_db_path()
+DB_BACKUP_DIR = DATA_DIR / "backups"
+
+# Backup retention for scripts/backup_database.ps1 (see pipeline/db/backup.py).
+DB_BACKUP_KEEP_DAILY = 14
+DB_BACKUP_KEEP_WEEKLY = 8
+
 SCHEMA_PATH = PIPELINE_DIR / "db" / "schema.sql"
 JURISDICTIONS_YAML = PIPELINE_DIR / "config" / "jurisdictions.yaml"
 
@@ -265,3 +312,169 @@ CITY_CENTROIDS = {
     ("QUEEN CREEK", "AZ"): (33.2487, -111.6343),
     ("CASA GRANDE", "AZ"): (32.8795, -111.7574),
 }
+
+# ---------------------------------------------------------------
+# RAW append-only capture (data platform Phase 1).
+#
+# Every source observation is hashed and stored immutably in `raw_record`
+# BEFORE the existing upsert runs. A new version is written only when the
+# payload hash differs from the current version, so re-fetching unchanged
+# records costs nothing and "what actually changed" becomes a real query.
+# This layer never modifies permits/projects/companies behaviour.
+# ---------------------------------------------------------------
+
+# Master switch. Disabling stops RAW writes without touching ingestion logic.
+RAW_CAPTURE_ENABLED = _os.environ.get("CORRIDORIQ_RAW_CAPTURE", "1") != "0"
+
+# Label applied to the one-time baseline snapshot of pre-existing permits.
+# Backfilled rows are honestly marked: they are a starting point, not history
+# we actually observed over time.
+RAW_BACKFILL_SOURCE = "baseline_backfill"
+
+# Entity type recorded on permit rows in raw_record.
+RAW_ENTITY_PERMIT = "permit"
+
+# ---------------------------------------------------------------
+# Off-site backup replication to Cloudflare R2.
+#
+# Closeout risk #1: local backups live on the same volume as the database
+# (C:\CorridorIQData\db and C:\CorridorIQData\backups). Retention was correct
+# but the location was not -- one drive failure would take production and every
+# backup with it. R2 gives the copies a second failure domain.
+#
+# Credentials come from the environment, never from the repository. Unset
+# credentials disable replication rather than failing a backup: an off-site
+# copy is an enhancement to the local backup, not a precondition for it.
+# ---------------------------------------------------------------
+R2_ACCOUNT_ID = _os.environ.get("CORRIDORIQ_R2_ACCOUNT_ID", "").strip()
+R2_ACCESS_KEY_ID = _os.environ.get("CORRIDORIQ_R2_ACCESS_KEY_ID", "").strip()
+R2_SECRET_ACCESS_KEY = _os.environ.get("CORRIDORIQ_R2_SECRET_ACCESS_KEY", "").strip()
+R2_BUCKET = _os.environ.get("CORRIDORIQ_R2_BUCKET", "").strip()
+
+# Key prefix inside the bucket, so the bucket can hold other things safely.
+R2_PREFIX = _os.environ.get("CORRIDORIQ_R2_PREFIX", "db-backups").strip().strip("/")
+
+# R2 exposes one S3-compatible endpoint per account and ignores regions.
+R2_ENDPOINT_URL = (
+    _os.environ.get("CORRIDORIQ_R2_ENDPOINT")
+    or (f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else "")
+)
+
+R2_REPLICATION_ENABLED = (
+    _os.environ.get("CORRIDORIQ_R2_REPLICATION", "1") != "0"
+    and bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET)
+)
+
+# Remote retention is deliberately longer than local. Off-site storage is the
+# copy that matters when the local disk is gone, and R2 is cheap enough that
+# depth costs little.
+R2_KEEP_DAILY = int(_os.environ.get("CORRIDORIQ_R2_KEEP_DAILY", "30"))
+R2_KEEP_WEEKLY = int(_os.environ.get("CORRIDORIQ_R2_KEEP_WEEKLY", "26"))
+
+# 400 MB+ uploads are multipart. 32 MB parts keep the count near 13 rather than
+# the ~50 that boto3's 8 MB default would produce.
+R2_MULTIPART_CHUNK_BYTES = int(
+    _os.environ.get("CORRIDORIQ_R2_CHUNK_BYTES", str(32 * 1024 * 1024))
+)
+
+# ---------------------------------------------------------------
+# Source health telemetry (data platform Phase 2).
+#
+# Rolls ingestion_runs up per jurisdiction so a flaky source is visible
+# without hand-written SQL. gilbert_az failed on 2026-09-08, 09-13 and
+# 09-15 before anyone noticed the pattern; these thresholds are what
+# turn that into a reported state.
+# ---------------------------------------------------------------
+
+# Consecutive failed runs before a source is called 'failing' rather than
+# 'degraded'. Three tolerates a single bad morning plus one retry window.
+SOURCE_FAILING_STREAK = 3
+
+# Failures within the trailing week that mark an otherwise-recovered
+# source as 'degraded'. Two catches intermittent sources that always
+# recover by the next run and would otherwise always look healthy.
+SOURCE_DEGRADED_FAILURES_7D = 2
+
+# Days of successful-but-empty runs before a source is called 'silent'.
+# A withdrawn feed or a broken incremental filter is indistinguishable
+# from "no new permits" until enough quiet time has passed.
+SOURCE_SILENT_DAYS = 14
+
+# Trailing window for the rate statistics reported alongside the state.
+SOURCE_HEALTH_WINDOW_DAYS = 7
+
+# ---------------------------------------------------------------
+# Incremental watermark lookback.
+#
+# Connectors filter on the SOURCE's issue date, but sources publish records
+# days after the date those records carry. A watermark set to "when we last
+# ran" therefore skips anything that arrives late -- and because the watermark
+# always moves forward, it skips it permanently and silently. That defect cost
+# 669 uncollected permits across five sources before telemetry exposed it.
+#
+# The watermark is now the newest source date we already hold, minus this
+# window, so late arrivals are re-examined instead of missed.
+#
+# Sizing: observed publish lag topped out at 5 days, but that measurement only
+# sees records we managed to catch -- anything slower was dropped and cannot
+# appear in the sample. 30 days is a deliberate margin over a figure known to
+# be biased low. Re-fetched records that have not changed are detected as
+# unchanged and do not churn, so the cost of a wide window is query volume
+# only.
+INGEST_WATERMARK_LOOKBACK_DAYS = 30
+
+# ---------------------------------------------------------------
+# Contractor intelligence foundation (internal, not customer-facing).
+#
+# Multi-label capabilities derived from permit/project evidence.
+# This layer MUST NOT write opportunity_score / confidence_score /
+# estimated_material_value. Enrichment source families (ROC, ACC, UCC)
+# are reserved here and stay disabled until a later ingest phase.
+# ---------------------------------------------------------------
+CONTRACTOR_INTEL_MODEL_VERSION = "contractor-intel-v2"
+# Persist a capability row at or above this score (0-100). Lower evidence
+# is kept only as unused signal during a run; it is not stored.
+CONTRACTOR_INTEL_MIN_CONFIDENCE = 20.0
+
+# Shadow customer-relevance layer. Does not write opportunity_score and is
+# not consumed by the dashboard until a later approved ranking phase.
+CUSTOMER_RELEVANCE_MODEL_VERSION = "relevance-plumbing-v1"
+CUSTOMER_RELEVANCE_PROFILE = "plumbing_supply"
+
+# Account-priority layer. Does not write opportunity_score or project
+# customer_relevance_score. The portal uses it only through pipeline/trust as a
+# secondary sort inside an account-relevance rank; the value is never returned.
+ACCOUNT_PRIORITY_MODEL_VERSION = "account-priority-v1"
+
+# Internal Arizona ROC identity enrichment. Ranking consumption stays off.
+ROC_MODEL_VERSION = "roc-identity-v1"
+ROC_CLASS_MAP_VERSION = "roc-class-map-v1"
+ROC_MATCH_VERSION = "roc-match-v1"
+ROC_SOURCE_PAGE = "https://roc.az.gov/posting-list"
+ROC_CLASSIFICATIONS_URL = "https://roc.az.gov/license-classifications"
+ROC_CONTRACTOR_SEARCH_URL = "https://azroc.my.site.com/AZRoc/s/contractor-search"
+ROC_DATA_DIR = DATA_DIR / "roc"
+
+# Phase 4D entity resolution + contactability (INTERNAL).
+# Canonical links are additive. They never merge companies, rewrite
+# project FKs, or change ranking scores. Contact channels never bulk-create
+# CRM relationships. Ranking consumption stays off.
+ENTITY_MODEL_VERSION = "entity-link-v1"
+ENTITY_MATCH_VERSION = "entity-link-v1"
+CONTACT_MODEL_VERSION = "contactability-v1"
+CONTACT_DATA_DIR = DATA_DIR / "contacts"
+
+# Phase 4E sales-readiness validation gate (INTERNAL).
+# Writes review tables only. Does not change ranking, scores, CRM, or ROC flags.
+SALES_GATE_VERSION = "sales-gate-v1"
+CONTACT_RESEARCH_DIR = CONTACT_DATA_DIR / "research"
+
+# Phase 4F internal sales-lane presentation (INTERNAL).
+# Filters and collapses existing account_priority_score. Does not retune it.
+SALES_LANE_VERSION = "sales-lane-v1"
+
+# Phase 4G plumbing-core contact enrichment + internal sales trial (INTERNAL).
+# Additive contact channels and presentation status only. Does not retune scores.
+SALES_TRIAL_VERSION = "sales-trial-v1"
+# Prior Aug 2026 research CSVs live in the user Downloads folder.
+CONTACT_RESEARCH_DOWNLOADS = Path.home() / "Downloads"

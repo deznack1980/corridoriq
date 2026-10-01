@@ -10,21 +10,71 @@ from datetime import datetime, timezone
 
 import yaml
 
-from pipeline.config.settings import DB_PATH, SCHEMA_PATH, JURISDICTIONS_YAML
+from pipeline.config.settings import (
+    DB_PATH,
+    JURISDICTIONS_YAML,
+    LEGACY_DB_PATH,
+    SCHEMA_PATH,
+)
+
+# SQLite has no persistent, file-level foreign-key setting: `PRAGMA
+# foreign_keys` is per-connection and defaults to OFF. Enforcement therefore
+# depends on every connection going through get_connection(), which is why
+# production code must not call sqlite3.connect() directly.
+_BUSY_TIMEOUT_MS = 10_000
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _stranded_legacy_database() -> bool:
+    """True when the configured DB is absent but an old in-repo one exists.
+
+    Without this guard, a misconfigured CORRIDORIQ_DB_PATH silently creates an
+    empty database and the pipeline looks like it lost 110k permits.
+    """
+    try:
+        return (
+            not DB_PATH.exists()
+            and LEGACY_DB_PATH.exists()
+            and DB_PATH.resolve() != LEGACY_DB_PATH.resolve()
+        )
+    except OSError:  # pragma: no cover - resolve() on an unmapped drive
+        return False
+
+
+def apply_connection_pragmas(conn: sqlite3.Connection) -> None:
+    """Apply the standard runtime pragmas to an open connection."""
+    conn.execute("PRAGMA foreign_keys = ON")
+    # Wait rather than fail immediately when another connection holds a lock
+    # (API server, scheduled refresh, or a backup running concurrently).
+    conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
+    # WAL lets readers proceed while the pipeline writes. It is persisted in
+    # the database file, so this is a no-op after the first call; setting it
+    # every time makes the setting self-healing if a file is ever restored
+    # from a non-WAL copy. WAL is unsafe on network/synced filesystems, which
+    # is a second reason the database lives outside OneDrive.
+    conn.execute("PRAGMA journal_mode = WAL")
+    # Safe with WAL: a crash can lose the last transaction but cannot corrupt
+    # the database. Full fsync per commit is not worth the cost for a pipeline
+    # whose input is re-fetchable.
+    conn.execute("PRAGMA synchronous = NORMAL")
+
+
 def get_connection() -> sqlite3.Connection:
+    if _stranded_legacy_database():
+        raise RuntimeError(
+            f"No database at the configured location:\n  {DB_PATH}\n"
+            f"but a legacy in-repo database still exists at:\n  {LEGACY_DB_PATH}\n\n"
+            "Refusing to create an empty database and silently lose it.\n"
+            "Run:  python scripts/migrate_database_location.py\n"
+            "or set CORRIDORIQ_DB_PATH to the database you intend to use."
+        )
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    # Wait (rather than fail immediately) if another connection holds a lock —
-    # e.g. a running API server or OneDrive sync briefly touching the file.
-    conn.execute("PRAGMA busy_timeout = 5000")
+    apply_connection_pragmas(conn)
     return conn
 
 
@@ -93,6 +143,32 @@ _KNOWLEDGE_V21_COLUMNS = [
     ("suppliers", "longitude", "REAL"),
     ("suppliers", "active", "INTEGER NOT NULL DEFAULT 1"),
     ("suppliers", "updated_at", "TEXT"),
+    # Data platform Phase 1 — RAW layer hash-rule versioning.
+    ("raw_record", "payload_hash_version", "INTEGER NOT NULL DEFAULT 1"),
+    # Data platform Phase 2 — ingestion telemetry. Left nullable on purpose:
+    # runs recorded before Phase 2 genuinely do not have these values, and a
+    # backfilled zero would be indistinguishable from a measured zero.
+    ("ingestion_runs", "pipeline_run_id", "INTEGER REFERENCES pipeline_runs(id)"),
+    ("ingestion_runs", "raw_batch_id", "INTEGER"),
+    ("ingestion_runs", "connector_type", "TEXT"),
+    ("ingestion_runs", "requested_since", "TEXT"),
+    ("ingestion_runs", "duration_ms", "INTEGER"),
+    ("ingestion_runs", "retries", "INTEGER"),
+    ("ingestion_runs", "error_type", "TEXT"),
+    ("ingestion_runs", "http_status", "INTEGER"),
+    ("ingestion_runs", "source_rows", "INTEGER"),
+    ("ingestion_runs", "duplicates_dropped", "INTEGER"),
+    ("ingestion_runs", "records_unchanged", "INTEGER"),
+    ("ingestion_runs", "raw_new", "INTEGER"),
+    ("ingestion_runs", "raw_changed", "INTEGER"),
+    ("ingestion_runs", "raw_unchanged", "INTEGER"),
+    # Contractor intel Phase 3 — role attribution (additive).
+    ("company_capabilities", "attribution_role", "TEXT"),
+    ("company_capabilities", "attribution_confidence", "REAL"),
+    ("company_capabilities", "capability_class", "TEXT"),
+    ("company_capability_evidence", "attribution_role", "TEXT"),
+    ("company_capability_evidence", "attribution_confidence", "REAL"),
+    ("company_capability_evidence", "evidence_directness", "TEXT"),
 ]
 
 
@@ -170,6 +246,18 @@ def init_db() -> sqlite3.Connection:
         seed_auth(conn)
     except Exception as exc:  # pragma: no cover - keep DB usable if seed fails
         print(f"Warning: auth seed skipped: {exc}")
+    try:
+        from pipeline.contractor_intel.enrichment import seed_enrichment_registry
+
+        seed_enrichment_registry(conn)
+    except Exception as exc:  # pragma: no cover
+        print(f"Warning: enrichment registry seed skipped: {exc}")
+    try:
+        from pipeline.relevance.classify import seed_relevance_profiles
+
+        seed_relevance_profiles(conn)
+    except Exception as exc:  # pragma: no cover
+        print(f"Warning: relevance profile seed skipped: {exc}")
     return conn
 
 

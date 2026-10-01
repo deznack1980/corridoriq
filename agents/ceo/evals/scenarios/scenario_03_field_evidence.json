@@ -1,0 +1,14 @@
+{
+  "id": "scenario_03_field_evidence",
+  "question": "The four-account trial shows contractors consistently want to text photos of handwritten supply lists. What should we do?",
+  "expect": {
+    "action_id": "constrained_intake_prototype",
+    "bottleneck": "PRODUCT",
+    "engineering": true,
+    "cursor_brief": true,
+    "kind": "BUILD",
+    "text_any": ["prototype"],
+    "brief_forbids_any": ["marketplace", "account_priority_score"],
+    "evidence_category": "FIELD_EVIDENCE"
+  }
+}

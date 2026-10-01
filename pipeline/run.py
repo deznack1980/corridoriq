@@ -69,6 +69,21 @@ def cmd_companies(conn):
     print("=== Company timeline ===")
     t = rebuild_company_timeline(conn)
     print(f"  {t} new timeline rows")
+    print("=== Contractor capability classification (internal) ===")
+    from pipeline.contractor_intel.classify import classify_companies
+
+    cap = classify_companies(conn)
+    print(f"  {cap}")
+    print("=== Customer relevance (shadow, plumbing_supply) ===")
+    from pipeline.relevance.classify import score_project_relevance
+
+    rel = score_project_relevance(conn)
+    print(f"  {rel}")
+    print("=== Account priority (shadow, plumbing_supply) ===")
+    from pipeline.relevance.account import score_company_accounts
+
+    acc = score_company_accounts(conn)
+    print(f"  {acc}")
     export_companies(conn)
     print("  company exports written")
 
@@ -133,8 +148,59 @@ def cmd_morning_refresh(conn):
     )
 
 
+def cmd_raw_backfill(conn):
+    """One-time baseline snapshot of existing permits into the RAW layer."""
+    from pipeline.ingestion.raw_backfill import backfill_permits
+
+    print("\n=== RAW baseline backfill ===")
+    stats = backfill_permits(conn)
+    print(
+        f"scanned={stats['scanned']} new={stats['new']} changed={stats['changed']} "
+        f"unchanged={stats['unchanged']} skipped={stats['skipped']}"
+    )
+
+
+def cmd_source_health(conn):
+    """Evaluate and record per-source health telemetry."""
+    from pipeline.telemetry import source_health
+
+    print("\n=== Source health ===")
+    for health in source_health.record_snapshot(conn):
+        print(f"{health['jurisdiction_slug']:<16}{health['health_state']:<10}"
+              f"{health['detail'] or ''}")
+
+
+def cmd_classify_contractors(conn):
+    """Internal multi-label contractor capabilities. Does not change scores."""
+    from pipeline.contractor_intel.classify import classify_companies
+
+    print("=== Contractor capability classification (internal) ===")
+    stats = classify_companies(conn)
+    print(f"  {stats}")
+
+
+def cmd_shadow_relevance(conn):
+    """Shadow plumbing_supply relevance. Does not change opportunity_score."""
+    from pipeline.relevance.classify import score_project_relevance
+
+    print("=== Customer relevance (shadow, plumbing_supply) ===")
+    stats = score_project_relevance(conn)
+    print(f"  {stats}")
+
+
+def cmd_shadow_accounts(conn):
+    """Shadow account priority. Does not rewrite project relevance scores."""
+    from pipeline.relevance.account import score_company_accounts
+
+    print("=== Account priority (shadow, plumbing_supply) ===")
+    stats = score_company_accounts(conn)
+    print(f"  {stats}")
+
+
 STEPS = {
     "ingest": cmd_ingest,
+    "raw_backfill": cmd_raw_backfill,
+    "source_health": cmd_source_health,
     "analyze": cmd_analyze,
     "rebuild-contractors": cmd_rebuild_contractors,
     "companies": cmd_companies,
@@ -142,6 +208,9 @@ STEPS = {
     "export-permits": cmd_export_permits,
     "reports": cmd_reports,
     "morning_refresh": cmd_morning_refresh,
+    "classify-contractors": cmd_classify_contractors,
+    "shadow-relevance": cmd_shadow_relevance,
+    "shadow-accounts": cmd_shadow_accounts,
 }
 
 

@@ -21,7 +21,13 @@ CREATE TABLE IF NOT EXISTS jurisdictions (
 );
 
 -- ============================================================
--- ingestion_runs: per-run audit log
+-- ingestion_runs: per-run audit log.
+--
+-- Phase 2 widened this from "did it work" to "what actually
+-- happened". The original six counters could not answer why a run
+-- failed, how long it took, which watermark it used, or whether the
+-- records it fetched contained anything new — all of which had to be
+-- reconstructed by hand when gilbert_az started failing.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS ingestion_runs (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,8 +38,27 @@ CREATE TABLE IF NOT EXISTS ingestion_runs (
     records_inserted   INTEGER DEFAULT 0,
     records_updated    INTEGER DEFAULT 0,
     status             TEXT,
-    error_message      TEXT
+    error_message      TEXT,
+    -- Phase 2 telemetry (all nullable; older rows keep NULL honestly
+    -- rather than being backfilled with invented zeros).
+    pipeline_run_id    INTEGER REFERENCES pipeline_runs(id),
+    raw_batch_id       INTEGER REFERENCES raw_ingest_batch(batch_id),
+    connector_type     TEXT,
+    requested_since    TEXT,     -- incremental watermark actually used
+    duration_ms        INTEGER,
+    retries            INTEGER,
+    error_type         TEXT,     -- classified: http_5xx, timeout, ...
+    http_status        INTEGER,
+    source_rows        INTEGER,  -- rows the source returned, pre-dedupe
+    duplicates_dropped INTEGER,
+    records_unchanged  INTEGER,
+    raw_new            INTEGER,
+    raw_changed        INTEGER,
+    raw_unchanged      INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_ingestion_runs_slug_time
+    ON ingestion_runs(jurisdiction_slug, run_started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ingestion_runs_status ON ingestion_runs(status);
 
 -- ============================================================
 -- permits: raw ingested permit records. All source-dependent
@@ -902,3 +927,720 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_type_time
     ON pipeline_runs(run_type, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs(status);
+
+-- ============================================================
+-- RAW LAYER (data platform Phase 1) -- APPEND-ONLY.
+--
+-- Purpose: stop losing source history. Before Phase 1 the pipeline
+-- updated permits in place and overwrote raw_source_json, so a prior
+-- valuation or status could never be recovered. These two tables are
+-- written alongside the existing upsert and are never read by the
+-- application, so nothing downstream changes behaviour.
+--
+-- RULES:
+--   * raw_record is INSERT-only. The single permitted UPDATE is
+--     flipping is_current 1 -> 0 when a newer version supersedes a row.
+--   * Nothing is ever DELETEd.
+--   * A new version is written ONLY when payload_hash differs from the
+--     current version, so re-fetching unchanged records costs nothing.
+-- ============================================================
+
+-- One row per ingestion attempt against one source.
+CREATE TABLE IF NOT EXISTS raw_ingest_batch (
+    batch_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    pipeline_run_id    INTEGER REFERENCES pipeline_runs(id),
+    source_system      TEXT NOT NULL,        -- jurisdiction slug, 'supplier_csv', ...
+    source_entity_type TEXT NOT NULL,        -- 'permit', 'product', ...
+    connector_type     TEXT,                 -- 'arcgis_hub' | 'socrata' | 'csv' | 'backfill'
+    source_url         TEXT,                 -- exact endpoint queried
+    requested_since    TEXT,                 -- incremental watermark used
+    started_at         TEXT NOT NULL,
+    completed_at       TEXT,
+    status             TEXT NOT NULL DEFAULT 'running'
+                       CHECK(status IN ('running','succeeded','failed','partial')),
+    records_fetched    INTEGER NOT NULL DEFAULT 0,
+    records_new        INTEGER NOT NULL DEFAULT 0,   -- source_record_id never seen before
+    records_changed    INTEGER NOT NULL DEFAULT 0,   -- payload hash differs -> new version
+    records_unchanged  INTEGER NOT NULL DEFAULT 0,   -- identical hash -> no row written
+    error_message      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_raw_batch_source_time
+    ON raw_ingest_batch(source_system, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_raw_batch_run ON raw_ingest_batch(pipeline_run_id);
+
+-- One row per OBSERVED VERSION of a source record.
+CREATE TABLE IF NOT EXISTS raw_record (
+    raw_record_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id           INTEGER NOT NULL REFERENCES raw_ingest_batch(batch_id),
+    source_system      TEXT NOT NULL,
+    source_entity_type TEXT NOT NULL,
+    source_record_id   TEXT NOT NULL,     -- natural id in the source (e.g. permit number)
+    payload_json       TEXT NOT NULL,     -- verbatim source payload
+    payload_hash       TEXT NOT NULL,     -- sha256 of the significant payload subset
+    -- Which hashing rule produced payload_hash. Changing the rule would
+    -- otherwise make every record look changed exactly once; instead the hash
+    -- is recomputed from the stored payload and corrected in place.
+    payload_hash_version INTEGER NOT NULL DEFAULT 1,
+    source_url         TEXT,
+    source_updated_at  TEXT,              -- source-side modification time where exposed
+    fetched_at         TEXT NOT NULL,     -- when WE observed it
+    version_number     INTEGER NOT NULL DEFAULT 1,
+    is_current         INTEGER NOT NULL DEFAULT 1,
+    -- Keyed on version rather than hash: a value that changes A -> B -> A is a
+    -- real, observable event and must be recordable as a third version.
+    UNIQUE(source_system, source_record_id, version_number)
+);
+CREATE INDEX IF NOT EXISTS idx_raw_record_lookup
+    ON raw_record(source_system, source_record_id, version_number DESC);
+CREATE INDEX IF NOT EXISTS idx_raw_record_fetched ON raw_record(fetched_at);
+CREATE INDEX IF NOT EXISTS idx_raw_record_batch   ON raw_record(batch_id);
+-- Exactly one current version per source record, enforced by the database
+-- rather than by convention.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_record_one_current
+    ON raw_record(source_system, source_record_id) WHERE is_current = 1;
+
+-- ============================================================
+-- source_health_snapshot (Phase 2) -- APPEND-ONLY.
+--
+-- A rollup of ingestion_runs per jurisdiction, evaluated and stored
+-- each time ingestion completes. Stored rather than only computed so
+-- that source reliability becomes a trend ("gilbert has degraded three
+-- weeks running") instead of a single current reading -- the same
+-- reason the RAW layer exists.
+--
+-- health_state:
+--   healthy  - recent runs succeeding and producing data
+--   degraded - isolated failures, or repeated failures within a week
+--   failing  - a sustained failure streak
+--   silent   - runs succeed but return nothing, for a source that
+--              used to return something (a broken incremental filter
+--              or a withdrawn feed looks exactly like "no new permits")
+--   unknown  - no runs recorded yet
+-- ============================================================
+CREATE TABLE IF NOT EXISTS source_health_snapshot (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    captured_at              TEXT NOT NULL,
+    jurisdiction_slug        TEXT NOT NULL REFERENCES jurisdictions(slug),
+    health_state             TEXT NOT NULL,
+    consecutive_failures     INTEGER NOT NULL DEFAULT 0,
+    last_success_at          TEXT,
+    last_data_at             TEXT,     -- last run that actually returned rows
+    last_error_type          TEXT,
+    last_error_message       TEXT,
+    runs_7d                  INTEGER NOT NULL DEFAULT 0,
+    failures_7d              INTEGER NOT NULL DEFAULT 0,
+    success_rate_7d          REAL,
+    records_7d               INTEGER NOT NULL DEFAULT 0,
+    -- Reported but deliberately NOT used to drive health_state: a city
+    -- that simply is not issuing permits is not a broken source.
+    newest_source_date       TEXT,
+    days_since_newest_source REAL,
+    days_since_last_data     REAL,
+    detail                   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_source_health_slug_time
+    ON source_health_snapshot(jurisdiction_slug, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_source_health_state
+    ON source_health_snapshot(health_state);
+
+-- ============================================================
+-- Contractor intelligence foundation (internal).
+--
+-- Multi-label capabilities derived from permit/project evidence.
+-- These tables are NOT a customer-facing product surface: raw
+-- enrichment source families, scoring weights, and methodology stay
+-- here. Future ROC / ACC / UCC / contact payloads land in
+-- company_enrichment without changing the sales serializers.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS company_capabilities (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id              INTEGER NOT NULL REFERENCES companies(id),
+    capability              TEXT NOT NULL,
+    confidence              REAL NOT NULL,
+    evidence_count          INTEGER NOT NULL DEFAULT 0,
+    distinct_permit_count   INTEGER NOT NULL DEFAULT 0,
+    first_evidence_date     TEXT,
+    last_evidence_date      TEXT,
+    classification_source   TEXT NOT NULL,
+    source_types            TEXT,
+    model_version           TEXT NOT NULL,
+    created_at              TEXT NOT NULL,
+    updated_at              TEXT NOT NULL,
+    attribution_role        TEXT,
+    attribution_confidence  REAL,
+    capability_class        TEXT,
+    UNIQUE(company_id, capability)
+);
+CREATE INDEX IF NOT EXISTS idx_company_cap_capability
+    ON company_capabilities(capability, confidence DESC);
+CREATE INDEX IF NOT EXISTS idx_company_cap_company
+    ON company_capabilities(company_id);
+CREATE INDEX IF NOT EXISTS idx_company_cap_confidence
+    ON company_capabilities(confidence DESC);
+CREATE INDEX IF NOT EXISTS idx_company_cap_role
+    ON company_capabilities(attribution_role);
+CREATE INDEX IF NOT EXISTS idx_company_cap_class
+    ON company_capabilities(capability_class);
+
+CREATE TABLE IF NOT EXISTS company_capability_evidence (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id      INTEGER NOT NULL REFERENCES companies(id),
+    capability      TEXT NOT NULL,
+    permit_id       INTEGER REFERENCES permits(id),
+    project_id      INTEGER REFERENCES projects(id),
+    signal_type     TEXT NOT NULL,
+    signal_value    TEXT,
+    weight          REAL NOT NULL,
+    evidence_date   TEXT,
+    model_version   TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    attribution_role        TEXT,
+    attribution_confidence  REAL,
+    evidence_directness     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cap_evidence_company
+    ON company_capability_evidence(company_id, capability);
+CREATE INDEX IF NOT EXISTS idx_cap_evidence_capability
+    ON company_capability_evidence(capability);
+CREATE INDEX IF NOT EXISTS idx_cap_evidence_permit
+    ON company_capability_evidence(permit_id);
+
+-- Registry of INTERNAL enrichment families. Display labels never leave
+-- this table into the sales API. is_enabled=0 until a later phase
+-- actually ingests that family.
+CREATE TABLE IF NOT EXISTS enrichment_source_registry (
+    source_family   TEXT PRIMARY KEY,
+    internal_label  TEXT NOT NULL,
+    is_enabled      INTEGER NOT NULL DEFAULT 0,
+    notes           TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS company_enrichment (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id          INTEGER NOT NULL REFERENCES companies(id),
+    source_family       TEXT NOT NULL REFERENCES enrichment_source_registry(source_family),
+    source_record_key   TEXT,
+    payload_json        TEXT,
+    confidence          REAL,
+    observed_at         TEXT,
+    model_version       TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    UNIQUE(company_id, source_family, source_record_key)
+);
+CREATE INDEX IF NOT EXISTS idx_company_enrichment_company
+    ON company_enrichment(company_id, source_family);
+
+-- ============================================================
+-- Customer relevance (SHADOW). Internal only.
+-- opportunity_score is unchanged. Dashboard ranking is unchanged.
+-- A project may have different relevance per customer profile.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS customer_relevance_profiles (
+    profile_key     TEXT PRIMARY KEY,
+    internal_label  TEXT NOT NULL,
+    is_enabled      INTEGER NOT NULL DEFAULT 0,
+    notes           TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_customer_relevance (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id              INTEGER NOT NULL REFERENCES projects(id),
+    company_id              INTEGER REFERENCES companies(id),
+    profile_key             TEXT NOT NULL REFERENCES customer_relevance_profiles(profile_key),
+    relevance_score         REAL NOT NULL,
+    demand_score            REAL NOT NULL,
+    contractor_fit_score    REAL NOT NULL,
+    catalog_scale_score     REAL NOT NULL,
+    timing_score            REAL NOT NULL,
+    demand_flags            TEXT,
+    contractor_fit_basis    TEXT,
+    attribution_role        TEXT,
+    capability_class        TEXT,
+    model_version           TEXT NOT NULL,
+    created_at              TEXT NOT NULL,
+    updated_at              TEXT NOT NULL,
+    UNIQUE(project_id, profile_key)
+);
+CREATE INDEX IF NOT EXISTS idx_pcr_profile_score
+    ON project_customer_relevance(profile_key, relevance_score DESC);
+CREATE INDEX IF NOT EXISTS idx_pcr_company
+    ON project_customer_relevance(company_id, profile_key);
+CREATE INDEX IF NOT EXISTS idx_pcr_project
+    ON project_customer_relevance(project_id);
+
+-- Multi-label wet-demand tags. Internal. Does not change relevance_score.
+CREATE TABLE IF NOT EXISTS project_demand_labels (
+    project_id          INTEGER NOT NULL REFERENCES projects(id),
+    profile_key         TEXT NOT NULL REFERENCES customer_relevance_profiles(profile_key),
+    categories          TEXT NOT NULL,
+    primary_category    TEXT,
+    model_version       TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    UNIQUE(project_id, profile_key)
+);
+CREATE INDEX IF NOT EXISTS idx_pdl_primary
+    ON project_demand_labels(profile_key, primary_category);
+
+-- Shadow account priority. One row per profile + company.
+-- Does not overwrite opportunity_score or project_customer_relevance.
+CREATE TABLE IF NOT EXISTS company_customer_priority (
+    id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_key                     TEXT NOT NULL REFERENCES customer_relevance_profiles(profile_key),
+    company_id                      INTEGER NOT NULL REFERENCES companies(id),
+    account_priority_score          REAL NOT NULL,
+    trade_identity                  TEXT NOT NULL,
+    trade_identity_score            REAL NOT NULL,
+    activity_score                  REAL NOT NULL,
+    recency_score                   REAL NOT NULL,
+    demand_quality_score            REAL NOT NULL,
+    project_quality_score           REAL NOT NULL,
+    confidence_score                REAL NOT NULL,
+    active_relevant_project_count   INTEGER NOT NULL DEFAULT 0,
+    high_relevance_project_count    INTEGER NOT NULL DEFAULT 0,
+    plumbing_project_count          INTEGER NOT NULL DEFAULT 0,
+    fuel_gas_project_count          INTEGER NOT NULL DEFAULT 0,
+    relevant_30d                    INTEGER NOT NULL DEFAULT 0,
+    relevant_90d                    INTEGER NOT NULL DEFAULT 0,
+    relevant_180d                   INTEGER NOT NULL DEFAULT 0,
+    relevant_365d                   INTEGER NOT NULL DEFAULT 0,
+    relevant_older                  INTEGER NOT NULL DEFAULT 0,
+    most_recent_relevant_date       TEXT,
+    primary_demand_category         TEXT,
+    demand_categories               TEXT,
+    strongest_capability            TEXT,
+    capability_confidence           REAL,
+    attribution_role                TEXT,
+    capability_class                TEXT,
+    identity_basis                  TEXT NOT NULL DEFAULT 'permit_behavior',
+    why_now                         TEXT,
+    model_version                   TEXT NOT NULL,
+    generated_at                    TEXT NOT NULL,
+    UNIQUE(profile_key, company_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ccp_profile_score
+    ON company_customer_priority(profile_key, account_priority_score DESC);
+CREATE INDEX IF NOT EXISTS idx_ccp_company
+    ON company_customer_priority(company_id, profile_key);
+
+-- ============================================================
+-- Arizona ROC identity enrichment (INTERNAL).
+-- Ranking consumption is disabled. Does not write opportunity_score,
+-- project_customer_relevance, or account_priority_score.
+-- Source-family codes must not be serialized to the sales API.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS roc_import_runs (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_family       TEXT NOT NULL DEFAULT 'roc',
+    source_url          TEXT,
+    source_filename     TEXT,
+    source_file_created TEXT,
+    retrieved_at        TEXT NOT NULL,
+    row_count           INTEGER,
+    model_version       TEXT NOT NULL,
+    notes               TEXT
+);
+
+CREATE TABLE IF NOT EXISTS roc_licenses (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    import_run_id               INTEGER REFERENCES roc_import_runs(id),
+    source_family               TEXT NOT NULL DEFAULT 'roc',
+    source_record_key           TEXT NOT NULL,
+    source_url                  TEXT,
+    retrieved_at                TEXT NOT NULL,
+    raw_license_number          TEXT,
+    normalized_license_number   TEXT NOT NULL,
+    raw_business_name           TEXT,
+    normalized_business_name    TEXT,
+    raw_dba                     TEXT,
+    normalized_dba              TEXT,
+    raw_class                   TEXT,
+    normalized_class            TEXT,
+    raw_class_detail            TEXT,
+    raw_class_type              TEXT,
+    raw_status                  TEXT,
+    normalized_status           TEXT,
+    issued_date                 TEXT,
+    expiration_date             TEXT,
+    qualifying_party            TEXT,
+    normalized_qualifying_party TEXT,
+    address_line_1              TEXT,
+    city                        TEXT,
+    state                       TEXT,
+    postal_code                 TEXT,
+    phone                       TEXT,
+    email                       TEXT,
+    corridor_capability         TEXT,
+    secondary_capabilities      TEXT,
+    mapping_confidence          REAL,
+    mapping_version             TEXT,
+    raw_json                    TEXT,
+    created_at                  TEXT NOT NULL,
+    updated_at                  TEXT NOT NULL,
+    UNIQUE(normalized_license_number, normalized_class)
+);
+CREATE INDEX IF NOT EXISTS idx_roc_lic_name
+    ON roc_licenses(normalized_business_name);
+CREATE INDEX IF NOT EXISTS idx_roc_lic_dba
+    ON roc_licenses(normalized_dba);
+CREATE INDEX IF NOT EXISTS idx_roc_lic_number
+    ON roc_licenses(normalized_license_number);
+CREATE INDEX IF NOT EXISTS idx_roc_lic_qp
+    ON roc_licenses(normalized_qualifying_party);
+CREATE INDEX IF NOT EXISTS idx_roc_lic_cap
+    ON roc_licenses(corridor_capability);
+
+CREATE TABLE IF NOT EXISTS roc_classification_map (
+    normalized_class        TEXT PRIMARY KEY,
+    official_title          TEXT,
+    corridor_capability     TEXT NOT NULL,
+    secondary_capabilities  TEXT,
+    mapping_confidence      REAL NOT NULL,
+    mapping_version         TEXT NOT NULL,
+    source_url              TEXT,
+    notes                   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS roc_company_matches (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    roc_license_id              INTEGER REFERENCES roc_licenses(id),
+    normalized_license_number   TEXT,
+    match_status                TEXT NOT NULL,
+    match_confidence            REAL NOT NULL,
+    match_reasons               TEXT,
+    matching_version            TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    updated_at                  TEXT NOT NULL,
+    UNIQUE(company_id, roc_license_id, matching_version)
+);
+CREATE INDEX IF NOT EXISTS idx_roc_match_company
+    ON roc_company_matches(company_id, match_status);
+CREATE INDEX IF NOT EXISTS idx_roc_match_license
+    ON roc_company_matches(normalized_license_number);
+
+CREATE TABLE IF NOT EXISTS roc_identity_validations (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id              INTEGER NOT NULL REFERENCES companies(id),
+    profile_key             TEXT,
+    permit_identity         TEXT,
+    roc_capabilities        TEXT,
+    roc_license_status      TEXT,
+    validation_result       TEXT NOT NULL,
+    confidence_delta        REAL,
+    notes                   TEXT,
+    model_version           TEXT NOT NULL,
+    created_at              TEXT NOT NULL,
+    UNIQUE(company_id, profile_key, model_version)
+);
+
+CREATE TABLE IF NOT EXISTS roc_contact_candidates (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id              INTEGER NOT NULL REFERENCES companies(id),
+    field_name              TEXT NOT NULL,
+    value                   TEXT,
+    source_family           TEXT NOT NULL DEFAULT 'roc',
+    source_date             TEXT,
+    confidence              REAL,
+    verification_status     TEXT NOT NULL DEFAULT 'candidate',
+    would_overwrite_existing INTEGER NOT NULL DEFAULT 0,
+    created_at              TEXT NOT NULL,
+    UNIQUE(company_id, field_name, source_family, value)
+);
+
+CREATE TABLE IF NOT EXISTS roc_duplicate_candidates (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id_a                INTEGER NOT NULL REFERENCES companies(id),
+    company_id_b                INTEGER NOT NULL REFERENCES companies(id),
+    normalized_license_number   TEXT,
+    roc_business_name           TEXT,
+    reason                      TEXT,
+    match_confidence            REAL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id_a, company_id_b, normalized_license_number)
+);
+
+-- ============================================================
+-- Phase 4D entity resolution (INTERNAL, additive).
+-- Multiple raw company rows may map to one canonical account.
+-- Source companies are never deleted or merged. Project FKs
+-- are never rewritten. opportunity_score / customer_relevance_score
+-- / account_priority_score are never written here.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS canonical_companies (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_name              TEXT NOT NULL,
+    normalized_canonical_name   TEXT NOT NULL,
+    primary_company_id          INTEGER REFERENCES companies(id),
+    recommendation              TEXT NOT NULL,
+    notes                       TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    updated_at                  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_canonical_norm
+    ON canonical_companies(normalized_canonical_name);
+
+CREATE TABLE IF NOT EXISTS company_entity_links (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    raw_company_id              INTEGER NOT NULL REFERENCES companies(id),
+    canonical_company_id        INTEGER NOT NULL REFERENCES canonical_companies(id),
+    relationship_type           TEXT NOT NULL,
+    match_confidence            REAL NOT NULL,
+    evidence                    TEXT,
+    matching_version            TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    reviewed_at                 TEXT,
+    reviewed_by                 TEXT,
+    UNIQUE(raw_company_id, canonical_company_id, relationship_type)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_links_raw
+    ON company_entity_links(raw_company_id);
+CREATE INDEX IF NOT EXISTS idx_entity_links_canonical
+    ON company_entity_links(canonical_company_id);
+
+CREATE TABLE IF NOT EXISTS entity_duplicate_reviews (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id_a                INTEGER NOT NULL REFERENCES companies(id),
+    company_id_b                INTEGER NOT NULL REFERENCES companies(id),
+    normalized_license_number   TEXT,
+    classification              TEXT NOT NULL,
+    canonical_recommendation    TEXT,
+    evidence                    TEXT,
+    matching_version            TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id_a, company_id_b, normalized_license_number)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_dup_class
+    ON entity_duplicate_reviews(classification);
+
+CREATE TABLE IF NOT EXISTS entity_match_overrides (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    original_match_status       TEXT,
+    recommended_match_status    TEXT NOT NULL,
+    evidence                    TEXT,
+    matching_version            TEXT NOT NULL,
+    applied                     INTEGER NOT NULL DEFAULT 0,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id, matching_version)
+);
+
+-- Internal contactability. Does not populate CRM relationships.
+CREATE TABLE IF NOT EXISTS company_contact_channels (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    canonical_company_id        INTEGER REFERENCES canonical_companies(id),
+    contact_type                TEXT NOT NULL,
+    contact_value               TEXT NOT NULL,
+    normalized_value            TEXT NOT NULL,
+    contact_name                TEXT,
+    title                       TEXT,
+    original_title              TEXT,
+    decision_maker_class        TEXT,
+    source_family               TEXT NOT NULL,
+    source_reference            TEXT,
+    discovered_at               TEXT NOT NULL,
+    verified_at                 TEXT,
+    confidence                  REAL,
+    verification_status         TEXT NOT NULL,
+    status                      TEXT NOT NULL DEFAULT 'active',
+    is_primary                  INTEGER NOT NULL DEFAULT 0,
+    public_business_contact     INTEGER NOT NULL DEFAULT 1,
+    notes                       TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    updated_at                  TEXT NOT NULL,
+    UNIQUE(company_id, contact_type, normalized_value, source_family)
+);
+CREATE INDEX IF NOT EXISTS idx_contact_channels_company
+    ON company_contact_channels(company_id, verification_status);
+CREATE INDEX IF NOT EXISTS idx_contact_channels_canonical
+    ON company_contact_channels(canonical_company_id);
+
+-- Phase 4E sales-readiness review. Internal only. Does not change ranking.
+CREATE TABLE IF NOT EXISTS sales_identity_reviews (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    display_name                TEXT,
+    recommended_identity_status TEXT NOT NULL,
+    legal_entity                TEXT,
+    dba                         TEXT,
+    roc_licenses                TEXT,
+    roc_classes                 TEXT,
+    business_address            TEXT,
+    official_website            TEXT,
+    official_phone              TEXT,
+    match_evidence              TEXT,
+    remaining_conflicts         TEXT,
+    notes                       TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id, model_version)
+);
+
+CREATE TABLE IF NOT EXISTS sales_person_reviews (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    display_name                TEXT,
+    person_class                TEXT NOT NULL,
+    sales_readiness             TEXT NOT NULL,
+    evidence                    TEXT,
+    notes                       TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id, model_version)
+);
+
+CREATE TABLE IF NOT EXISTS sales_account_reviews (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_key                 TEXT NOT NULL,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    rank_at_review              INTEGER,
+    display_name                TEXT,
+    account_priority_score      REAL,
+    identity_status             TEXT,
+    roc_status_class            TEXT,
+    contractor_trade_identity   TEXT,
+    account_segment             TEXT,
+    primary_demand_category     TEXT,
+    secondary_demand_categories TEXT,
+    relevant_30d                INTEGER,
+    relevant_90d                INTEGER,
+    relevant_180d               INTEGER,
+    strongest_project           TEXT,
+    phone                       TEXT,
+    email                       TEXT,
+    website                     TEXT,
+    named_contact               TEXT,
+    contact_role                TEXT,
+    contact_confidence          TEXT,
+    sales_why_now               TEXT,
+    salesperson_action          TEXT,
+    sales_readiness             TEXT NOT NULL,
+    demand_evidence_level       TEXT,
+    likely_buy                  TEXT,
+    fulfillment_readiness       TEXT,
+    intel_who                   INTEGER NOT NULL DEFAULT 0,
+    intel_why                   INTEGER NOT NULL DEFAULT 0,
+    intel_what                  INTEGER NOT NULL DEFAULT 0,
+    intel_how                   INTEGER NOT NULL DEFAULT 0,
+    intel_projects              INTEGER NOT NULL DEFAULT 0,
+    flags                       TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(profile_key, company_id, model_version)
+);
+CREATE INDEX IF NOT EXISTS idx_sales_account_rank
+    ON sales_account_reviews(profile_key, rank_at_review);
+
+-- Phase 4F internal sales lanes. Presentation only. Does not change ranking.
+CREATE TABLE IF NOT EXISTS sales_lanes (
+    lane_key                    TEXT PRIMARY KEY,
+    display_name                TEXT NOT NULL,
+    description                 TEXT,
+    is_salesperson_view         INTEGER NOT NULL DEFAULT 1,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS company_sales_lanes (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    lane_key                    TEXT NOT NULL REFERENCES sales_lanes(lane_key),
+    fit                         TEXT NOT NULL,
+    subtype                     TEXT,
+    evidence                    TEXT,
+    presentable                 INTEGER NOT NULL DEFAULT 1,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id, lane_key, model_version)
+);
+CREATE INDEX IF NOT EXISTS idx_company_sales_lanes_lane
+    ON company_sales_lanes(lane_key, fit, presentable);
+
+CREATE TABLE IF NOT EXISTS sales_lane_books (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lane_key                    TEXT NOT NULL REFERENCES sales_lanes(lane_key),
+    presentation_rank           INTEGER NOT NULL,
+    canonical_key               TEXT NOT NULL,
+    canonical_name              TEXT,
+    primary_company_id          INTEGER NOT NULL REFERENCES companies(id),
+    member_company_ids          TEXT NOT NULL,
+    account_priority_score      REAL NOT NULL,
+    trade_identity              TEXT,
+    identity_status             TEXT,
+    roc_status_safe             TEXT,
+    relevant_30d                INTEGER,
+    relevant_90d                INTEGER,
+    relevant_180d               INTEGER,
+    historical_relevant         INTEGER,
+    primary_demand              TEXT,
+    secondary_demand            TEXT,
+    likely_buy                  TEXT,
+    sales_why_now               TEXT,
+    contact_name                TEXT,
+    contact_role                TEXT,
+    phone                       TEXT,
+    email                       TEXT,
+    website                     TEXT,
+    strongest_project           TEXT,
+    fuel_gas_subtype            TEXT,
+    quality_label               TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(lane_key, presentation_rank, model_version)
+);
+CREATE INDEX IF NOT EXISTS idx_sales_lane_books_lane
+    ON sales_lane_books(lane_key, presentation_rank);
+
+-- Phase 4G frozen plumbing-core cohort + callability. Presentation only.
+CREATE TABLE IF NOT EXISTS sales_lane_snapshots (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lane_key                    TEXT NOT NULL,
+    presentation_rank           INTEGER NOT NULL,
+    canonical_key               TEXT NOT NULL,
+    canonical_name              TEXT,
+    primary_company_id          INTEGER NOT NULL REFERENCES companies(id),
+    member_company_ids          TEXT NOT NULL,
+    account_priority_score      REAL NOT NULL,
+    identity_status             TEXT,
+    quality_label               TEXT,
+    phone                       TEXT,
+    email                       TEXT,
+    website                     TEXT,
+    contact_confidence          TEXT,
+    actionable                  INTEGER NOT NULL DEFAULT 0,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(lane_key, presentation_rank, model_version)
+);
+
+CREATE TABLE IF NOT EXISTS sales_callability (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    lane_key                    TEXT NOT NULL,
+    presentation_rank           INTEGER NOT NULL,
+    canonical_name              TEXT,
+    status                      TEXT NOT NULL,
+    reasons                     TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id, lane_key, model_version)
+);
+
+CREATE TABLE IF NOT EXISTS sales_presentation_notes (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id                  INTEGER NOT NULL REFERENCES companies(id),
+    topic                       TEXT NOT NULL,
+    recommendation              TEXT NOT NULL,
+    evidence                    TEXT,
+    model_version               TEXT NOT NULL,
+    created_at                  TEXT NOT NULL,
+    UNIQUE(company_id, topic, model_version)
+);

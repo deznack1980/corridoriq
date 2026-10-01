@@ -190,9 +190,23 @@ def admin_dashboard(conn: sqlite3.Connection, user: dict) -> dict:
         "WHERE pr.project_lifecycle='Permit Issued' "
         "AND substr(COALESCE(p.issued_date, p.last_updated_at, ''), 1, 10) = ?",
         (today,))
-    high_priority = _n(
-        "SELECT COUNT(*) AS n FROM company_intelligence "
-        "WHERE company_priority_tier IN ('Critical','High')")
+    # Relevance and today's actions come from the shared trust layer, not the
+    # legacy company_priority tier.
+    from pipeline.trust import account_view as trust
+    rel_join, rel_rank, rel_params = trust.relevance_sql("c.id")
+    relevant_accounts = _n(
+        f"SELECT COUNT(*) AS n FROM companies c {rel_join} "
+        f"WHERE c.lifecycle_state='active' AND {rel_rank} = {trust.RANK[trust.CORE]}",
+        tuple(rel_params))
+    dnc = {r["company_id"] for r in conn.execute(
+        "SELECT company_id FROM crm_company_relationships WHERE organization_id=? "
+        "AND (do_not_contact=1 OR relationship_status='do_not_contact')", (org_id,))}
+    try:
+        todays = trust.todays_accounts(conn, exclude_ids=dnc)
+    except sqlite3.Error:
+        todays = {"items": [], "data_status": {"refresh": "Unknown"},
+                  "note": "Account checks are unavailable right now."}
+    high_priority = len(todays["items"])
     awaiting_assignment = _n(
         "SELECT COUNT(*) AS n FROM companies c "
         "WHERE c.lifecycle_state='active' AND NOT EXISTS ("
@@ -242,7 +256,8 @@ def admin_dashboard(conn: sqlite3.Connection, user: dict) -> dict:
             SELECT pr.id AS project_id, c.id AS company_id, c.display_name,
                    p.jurisdiction, p.job_address, p.city, pr.project_lifecycle,
                    pr.opportunity_score, pr.opportunity_date, pr.opportunity_timing,
-                   pr.project_category
+                   pr.project_category, p.permit_type, p.permit_subtype, p.description,
+                   p.project_description
             FROM projects pr
             JOIN permits p ON p.id = pr.permit_id
             LEFT JOIN companies c ON c.id = COALESCE(pr.contractor_company_id, p.contractor_company_id)
@@ -250,9 +265,10 @@ def admin_dashboard(conn: sqlite3.Connection, user: dict) -> dict:
             ORDER BY COALESCE(pr.opportunity_date, p.last_updated_at) DESC
             LIMIT ?
             """,
-            (10,),
+            (200,),
         ).fetchall()
     ]
+    recent_opps = trust.annotate_projects(recent_opps, conn=conn)[:10]
 
     freshness = refresh.get("freshness")
     if freshness is None:
@@ -278,6 +294,8 @@ def admin_dashboard(conn: sqlite3.Connection, user: dict) -> dict:
             "new_submitted_opportunities": new_submitted,
             "new_issued_permits": new_issued,
             "high_priority_opportunities": high_priority,
+            "accounts_to_act_on_today": high_priority,
+            "relevant_accounts": relevant_accounts,
             "companies_awaiting_assignment": awaiting_assignment,
             "estimates_awaiting_review": estimates_awaiting,
             "estimates_approved_for_supplier": estimates_approved,
@@ -294,6 +312,7 @@ def admin_dashboard(conn: sqlite3.Connection, user: dict) -> dict:
         "jurisdiction_freshness": freshness or [],
         "recent_pipeline_activity": recent_pipeline,
         "recent_opportunity_activity": recent_opps,
+        "todays_accounts": todays,
     }
 
 
@@ -312,7 +331,8 @@ def estimator_work_queue(conn: sqlite3.Connection, user: dict) -> dict:
         """
         SELECT pr.id AS project_id, pr.opportunity_score, pr.project_lifecycle,
                pr.estimated_material_value, p.permit_number, p.job_address, p.city,
-               p.status AS permit_status, c.id AS company_id, c.display_name AS company_name
+               p.status AS permit_status, c.id AS company_id, c.display_name AS company_name,
+               p.permit_type, p.permit_subtype, p.description, p.project_description
         FROM projects pr
         JOIN permits p ON p.id = pr.permit_id
         LEFT JOIN companies c ON c.id = p.contractor_company_id
@@ -320,11 +340,15 @@ def estimator_work_queue(conn: sqlite3.Connection, user: dict) -> dict:
           AND pr.opportunity_score >= ?
           AND NOT EXISTS (SELECT 1 FROM estimated_materials em WHERE em.project_id=pr.id)
         ORDER BY pr.opportunity_score DESC
-        LIMIT 50
+        LIMIT 1000
         """,
         (threshold,),
     ).fetchall()
-    items = [dict(r) for r in rows]
+    # A material estimate needs wet-side scope and a contractor in the
+    # plumbing-supply focus; permits naming only other trades (racking,
+    # electrical, signage) or held by off-focus accounts are not estimator work.
+    from pipeline.trust.account_view import annotate_projects
+    items = annotate_projects([dict(r) for r in rows], conn=conn)[:50]
     submitted = [
         dict(r) for r in conn.execute(
             """

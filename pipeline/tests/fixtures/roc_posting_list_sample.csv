@@ -1,0 +1,10 @@
+Current Active Contractor Licenses - File created: Jan 1, 2026 - 8 Records
+#,License No,Business Name,Doing Business As,Class,Class Detail,Class Type,Address,City,State,Zip,Qualifying Party,Issued Date,Expiration Date,Status
+1,111111,ACME PLUMBING LLC,Acme Pipe,CR-37,CR-37 Plumbing,Specialty Dual,100 Main St,PHOENIX,AZ,85001,"DOE, JANE",2020-01-15,2027-06-30,Active
+2,111111,ACME PLUMBING LLC,,C-39,C-39 Air Conditioning and Refrigeration,Commercial,100 Main St,PHOENIX,AZ,85001,"DOE, JANE",2020-01-15,2027-06-30,Active
+3,222222,DESERT BUILDERS INC,,KB-1,KB-1 Dual Building Contractor,General Dual,200 Builder Rd,MESA,AZ,85201,"SMITH, SAM",2018-03-01,2028-01-31,Active
+4,333333,VALLEY FIRE PROTECTION LLC,,CR-16,CR-16 Fire Protection Systems,Specialty Dual,300 Sprinkler Ave,PHOENIX,AZ,85003,"LEE, CASEY",2019-05-10,2027-11-30,Active
+5,444444,JANE DOE,,R-37,R-37 Plumbing Including Solar,Specialty Residential,400 Service Ln,TEMPE,AZ,85281,"DOE, JANE",2021-07-04,2027-07-31,Active
+6,555555,SONORAN GAS PIPING LLC,Sonoran Gas,R-37R,R-37R Gas Piping,Specialty Residential,500 Meter St,GLENDALE,AZ,85301,"GAS, PAT",2022-01-01,2028-01-31,Active
+7,666666,CIVIL LINE CONTRACTORS LLC,,CR-80,CR-80 Sewers Drains and Pipe Laying,Specialty Dual,600 Trench Rd,PHOENIX,AZ,85009,"PIPE, ALEX",2017-09-09,2027-09-30,Active
+8,777777,OTHER NAME LLC,,B-1,B-1 General Commercial Contractor,Commercial,700 Conflict St,TUCSON,AZ,85701,"OTHER, NAME",2016-01-01,2027-01-31,Active

@@ -2,19 +2,42 @@
 (function () {
   let data = null;
 
-  const KPI_DEFS = [
-    ["total_companies", "Total companies", "⌂", "my-companies.html", ""],
-    ["total_projects", "Total projects", "▦", "opportunities.html", ""],
-    ["total_permits", "Total permits", "☰", "opportunities.html", ""],
-    ["new_submitted_opportunities", "New submitted", "◎", "opportunities.html", "good"],
-    ["new_issued_permits", "New issued", "✓", "opportunities.html", "good"],
-    ["high_priority_opportunities", "High-priority", "⚡", "my-companies.html?tier=Critical", "warn"],
-    ["companies_awaiting_assignment", "Awaiting assignment", "⇄", "assignments.html", "warn"],
-    ["estimates_awaiting_review", "Estimates awaiting review", "$", "estimator-work-queue.html", ""],
-    ["estimates_approved_for_supplier", "Approved for supplier", "⬡", "product-search.html", ""],
-    ["active_employees", "Active employees", "⦿", "user-management.html", ""],
-    ["overdue_team_tasks", "Overdue team tasks", "⚠", "team-dashboard.html", "alert"],
-  ];
+  function companyMetaMap(companies) {
+    const map = {};
+    (companies || []).forEach((c) => {
+      map[c.company_id] = {
+        primary_role: c.primary_role,
+        full_name: c.contact_name || c.full_name,
+        job_title: c.job_title,
+        phone: c.main_phone || c.phone,
+      };
+    });
+    return map;
+  }
+
+  // The map workspace (map + feed) uses the organization context; its View all
+  // opens the same context and scope. The stat strip uses the same feed.
+  const OPP_CONTEXT = "organization";
+  const OPP_HREF = "opportunities.html?context=" + OPP_CONTEXT;
+
+  async function renderFeed() {
+    const k = (data && data.kpis) || {};
+    let companies = [];
+    try {
+      const listed = await CIQ.api.get("/api/sales/companies?page_size=50");
+      companies = listed.items || [];
+    } catch (e) { companies = []; }
+    const companyMeta = companyMetaMap(companies);
+    CIQ.mapWorkspace(document.getElementById("mapWorkspace"), {
+      context: OPP_CONTEXT,
+      todaysAccounts: (data.todays_accounts && data.todays_accounts.items) || [],
+      onLoaded: (feed) => {
+        const items = feed.items || [];
+        const stats = CIQ.summarizeOpportunities({ items, kpis: k, companyMeta, total: feed.total });
+        CIQ.renderExecStrip(document.getElementById("execStrip"), stats, { listHref: OPP_HREF });
+      },
+    });
+  }
 
   const ACTIONS = [
     ["opportunities.html", "View Projects"],
@@ -26,35 +49,6 @@
     ["#run-refresh", "Run Morning Refresh"],
     ["catalog-admin.html", "Open Administration"],
   ];
-
-  function kpiEmptyHint(key, v) {
-    if (v > 0) return "";
-    const hints = {
-      new_submitted_opportunities: "No new submitted opportunities today",
-      new_issued_permits: "No new issued permits today",
-      high_priority_opportunities: "No high-priority opportunities",
-      companies_awaiting_assignment: "No unassigned companies",
-      estimates_awaiting_review: "No estimates awaiting review",
-      overdue_team_tasks: "No overdue team tasks",
-    };
-    return hints[key] || "";
-  }
-
-  function renderKpis() {
-    const k = data.kpis || {};
-    document.getElementById("kpis").innerHTML = KPI_DEFS.map(([key, label, ico, href, cls]) => {
-      const v = k[key] || 0;
-      const hint = kpiEmptyHint(key, v);
-      const alertCls = (key === "overdue_team_tasks" && v > 0) ? "alert"
-        : (key === "companies_awaiting_assignment" && v > 0) ? "warn" : cls;
-      return `<a class="kpi ${alertCls}" href="${href}" title="${CIQ.esc(hint || label)}">
-        <span class="kpi-ico">${ico}</span>
-        <div class="kpi-val">${v}</div>
-        <div class="kpi-label">${label}</div>
-        ${hint ? `<div class="muted" style="font-size:11px;margin-top:4px">${CIQ.esc(hint)}</div>` : ""}
-      </a>`;
-    }).join("");
-  }
 
   function renderActions() {
     document.getElementById("actions").innerHTML = ACTIONS.map(([href, label]) => {
@@ -88,10 +82,10 @@
     const cls = ({ succeeded: "green", partial: "amber", failed: "red", running: "" })[status] || "";
     const when = mr.last_completed ? CIQ.relTime(mr.last_completed) : "—";
     const running = mr.running ? " · in progress" : "";
-    el.innerHTML = `<div class="company-card"><div class="cc-top">
-      <div><div class="cc-name" style="font-size:14.5px">Morning refresh status</div>
-      <div class="cc-loc">Last completed ${when}${running}</div></div>
-      <span class="badge ${cls}">${CIQ.esc(mr.label || "No refresh yet")}</span></div></div>`;
+    el.innerHTML = `<div class="dash-status">
+      <span>Last refresh ${when}${running}</span>
+      <span class="badge ${cls}">${CIQ.esc(mr.label || "No refresh yet")}</span>
+    </div>`;
   }
 
   function renderFreshness() {
@@ -161,8 +155,10 @@
   }
 
   async function load() {
-    document.getElementById("kpis").innerHTML = CIQ.skeletonRows
-      ? CIQ.skeletonRows(2) : `<div class="muted">Loading…</div>`;
+    document.getElementById("execStrip").innerHTML = CIQ.skeletonRows
+      ? CIQ.skeletonRows(1) : `<div class="muted">Loading…</div>`;
+    // #mapWorkspace shows its own loading state; writing into it here would
+    // wipe the live map on a reload.
     try {
       data = await CIQ.api.get("/api/admin/dashboard");
     } catch (e) {
@@ -170,12 +166,13 @@
       const hint = /unknown route|404/i.test(msg)
         ? " The CorridorIQ server needs a restart to load the admin dashboard API."
         : "";
-      const el = document.getElementById("kpis");
+      const el = document.getElementById("execStrip");
       if (el) el.innerHTML = CIQ.errorBanner(msg + hint);
       return;
     }
     renderRefresh();
-    renderKpis();
+    await renderFeed();
+    CIQ.renderTodaysAccounts(document.getElementById("todaysAccounts"), data.todays_accounts);
     renderActions();
     renderFreshness();
     renderPipeline();

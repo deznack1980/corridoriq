@@ -48,7 +48,7 @@
           <div class="cc-loc">${CIQ.esc([c.city, c.state].filter(Boolean).join(", ") || "—")}${c.primary_role ? " · " + CIQ.esc(CIQ.titleCase(c.primary_role)) : ""}</div>
         </div>
         <div class="stack" style="align-items:flex-end;gap:6px">
-          ${CIQ.tierBadge(c.company_priority_tier)}${CIQ.statusBadge(c.relationship_status)}
+          ${CIQ.relevanceBadge(c.account_relevance)}${CIQ.statusBadge(c.relationship_status)}
         </div>
       </div>
       <div class="cc-reason">${CIQ.esc(c.reason)}</div>

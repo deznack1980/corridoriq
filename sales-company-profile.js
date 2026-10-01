@@ -28,6 +28,11 @@
   function header() {
     const c = detail.company, ci = detail.intelligence || {}, r = detail.relationship || {};
     const loc = [c.city, c.state].filter(Boolean).join(", ") || "—";
+    // Only this company's own verified values drive the Call / Email links.
+    const vc = detail.verified_contact;
+    const verified = vc && vc.status === "VERIFIED";
+    const phone = verified && vc.phone ? vc.phone.value : null;
+    const email = verified && vc.email ? vc.email.value : null;
     return `<div class="card card-pad">
       <div class="profile-header">
         <div>
@@ -39,17 +44,17 @@
             <span>Rep: <b>${CIQ.esc(repName(r.assigned_user_id))}</b></span>
           </div>
           <div class="ph-meta">
-            ${c.main_phone ? `<span>☎ <b>${CIQ.esc(c.main_phone)}</b></span>` : ""}
-            ${c.main_email ? `<span>✉ <b>${CIQ.esc(c.main_email)}</b></span>` : ""}
             <span>Last contact: <b>${r.last_contact_at ? CIQ.relTime(r.last_contact_at) : "Never"}</b></span>
             <span>Next follow-up: <b>${r.next_followup_at ? CIQ.fmtDate(r.next_followup_at) : "—"}</b></span>
           </div>
+          <h4 style="margin:10px 0 4px">Verified contact</h4>
+          ${CIQ.verifiedContactBlock(vc)}
         </div>
       </div>
       <div class="action-bar">
-        ${c.main_phone ? `<a class="btn btn-primary btn-sm" href="tel:${CIQ.esc(c.main_phone)}" data-a="call">Call</a>`
+        ${phone ? `<a class="btn btn-primary btn-sm" href="tel:${CIQ.esc(phone)}" data-a="call">Call</a>`
           : `<button class="btn btn-primary btn-sm" data-a="call">Call</button>`}
-        ${c.main_email ? `<a class="btn btn-sm" href="mailto:${CIQ.esc(c.main_email)}" data-a="email">Email</a>`
+        ${email ? `<a class="btn btn-sm" href="mailto:${CIQ.esc(email)}" data-a="email">Email</a>`
           : `<button class="btn btn-sm" data-a="email">Email</button>`}
         <button class="btn btn-sm" data-a="log">Log activity</button>
         ${canEdit ? `<button class="btn btn-sm" data-a="task">Create task</button>

@@ -23,8 +23,14 @@ def _write_json(name: str, payload: dict) -> None:
 
 
 def export_companies(conn: sqlite3.Connection) -> None:
+    # Order and label by account relevance from the shared trust layer, so the
+    # static directory agrees with the live portal. Internal scores are not exported.
+    from pipeline.trust import account_view as trust
+    from pipeline.trust.public import public_relevance
+
+    rel_join, rel_rank, rel_params = trust.relevance_sql("c.id")
     rows = conn.execute(
-        """
+        f"""
         SELECT c.id, c.display_name, c.normalized_name, c.city, c.state,
                c.company_type_primary, c.license_number,
                ci.company_priority_score, ci.company_priority_tier,
@@ -35,17 +41,21 @@ def export_companies(conn: sqlite3.Connection) -> None:
                ci.latest_activity_date, ci.estimated_opportunity_total
         FROM companies c
         LEFT JOIN company_intelligence ci ON ci.company_id=c.id
+        {rel_join}
         WHERE c.lifecycle_state='active'
-        ORDER BY COALESCE(ci.company_priority_score,0) DESC,
+        ORDER BY {rel_rank} ASC, {trust.within_account_order()},
+                 COALESCE(ci.company_priority_score,0) DESC,
                  ci.latest_activity_date DESC, c.display_name
         LIMIT ?
         """,
-        (_STATIC_LIST_LIMIT,),
+        (*rel_params, _STATIC_LIST_LIMIT),
     ).fetchall()
+    relevance = trust.relevance_for(conn, [r["id"] for r in rows])
     items = []
     for r in rows:
         d = dict(r)
         d["roles"] = _roles_for(conn, r["id"])
+        d["account_relevance"] = public_relevance(relevance.get(r["id"]))
         items.append(d)
 
     total = conn.execute(

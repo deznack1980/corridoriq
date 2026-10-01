@@ -1,0 +1,13 @@
+{
+  "id": "scenario_01_next_action",
+  "question": "What should CorridorIQ do next?",
+  "expect": {
+    "action_id": "run_learning_trial",
+    "bottleneck": "CUSTOMER_VALIDATION",
+    "engineering": false,
+    "cursor_brief": false,
+    "confidence": "HIGH",
+    "text_any": ["learning trial"],
+    "evidence_category": "VERIFIED_SYSTEM_STATE"
+  }
+}

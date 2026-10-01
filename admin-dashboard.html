@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CorridorIQ — Administration</title>
+  <link rel="stylesheet" href="assets/vendor/leaflet-1.9.4/leaflet.css" />
   <link rel="stylesheet" href="portal.css" />
 </head>
 <body>
@@ -20,7 +21,11 @@
     </div>
 
     <div id="refreshCard"></div>
-    <div id="kpis" class="kpi-grid"></div>
+    <div id="execStrip"></div>
+    <div id="mapWorkspace" class="card card-pad map-workspace"></div>
+
+    <div class="section-title">Checked accounts to act on today</div>
+    <div id="todaysAccounts"></div>
 
     <div class="section-title">Quick actions</div>
     <div id="actions" class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px;margin-bottom:18px"></div>
@@ -34,7 +39,9 @@
     <div class="section-title">Recent opportunity activity</div>
     <div id="opps"></div>
   </template>
+  <script src="assets/vendor/leaflet-1.9.4/leaflet.js"></script>
   <script src="portal-common.js"></script>
+  <script src="map-workspace.js"></script>
   <script src="admin-dashboard.js"></script>
 </body>
 </html>

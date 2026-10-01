@@ -491,6 +491,21 @@
   };
   CIQ.money = (v) => v == null ? "—" :
     "$" + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  CIQ.moneyCompact = function (v) {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    const abs = Math.abs(n);
+    if (abs >= 1e6) {
+      const num = n / 1e6;
+      return "$" + (abs >= 10e6 ? Math.round(num) : Math.round(num * 10) / 10) + "M";
+    }
+    if (abs >= 1e3) {
+      const num = n / 1e3;
+      return "$" + (abs >= 10e3 ? Math.round(num) : Math.round(num * 10) / 10) + "K";
+    }
+    return CIQ.money(n);
+  };
 
   /* ---- Utilities ---------------------------------------------------- */
   CIQ.esc = function (s) {
@@ -511,10 +526,270 @@
   };
   CIQ.skeletonRows = (n = 5) =>
     Array.from({ length: n }).map(() => `<div class="skel skel-row"></div>`).join("");
-  CIQ.emptyState = ({ icon = "◎", title = "Nothing here yet", text = "", action = "" }) =>
-    `<div class="empty-state"><div class="ico">${icon}</div><h3>${CIQ.esc(title)}</h3>
+  CIQ.emptyState = ({ icon = "◎", title = "Nothing here yet", text = "", action = "", compact = false }) =>
+    `<div class="empty-state${compact ? " sm" : ""}"><div class="ico">${icon}</div><h3>${CIQ.esc(title)}</h3>
      <p>${CIQ.esc(text)}</p>${action}</div>`;
   CIQ.errorBanner = (msg) => `<div class="error-banner">${CIQ.esc(msg)}</div>`;
+
+  // Account relevance from the server-side trust layer (sales-lane assignment).
+  const RELEVANCE_COLOR = { CORE: "green", ADJACENT: "blue", NOT_ASSESSED: "slate",
+    NOT_RELEVANT: "amber", NOT_SALES_READY: "red" };
+  CIQ.relevanceBadge = (rel) => rel && rel.label
+    ? `<span class="badge ${RELEVANCE_COLOR[rel.status] || "slate"}" title="${CIQ.esc((rel.lanes || []).join(", "))}">${CIQ.esc(rel.label)}</span>`
+    : "";
+
+  // Best verified contact for one company (server: pipeline/trust/contacts.py).
+  // Only this company's own verified values are shown as usable; linked-record
+  // values are labelled inherited. Nothing is filled in on the client.
+  CIQ.verifiedContactBlock = function (vc, opts) {
+    const o = opts || {};
+    if (!vc || vc.status !== "VERIFIED") {
+      const inherited = (vc && vc.inherited) || [];
+      return `<div class="contact-block">
+        <div><span class="badge amber">${CIQ.esc((vc && vc.status === "INHERITED_UNVERIFIED") ? "Inherited — not verified" : "Not verified")}</span>
+          <b>Contact not yet verified.</b></div>
+        ${inherited.length ? `<div class="muted" style="font-size:12px;margin-top:4px">${inherited.map((i) =>
+          `${CIQ.esc(i.type)}: ${CIQ.esc(i.value)}${i.name ? " (" + CIQ.esc(i.name) + ")" : ""} — ${CIQ.esc(i.note)}`).join("<br>")}</div>` : ""}
+      </div>`;
+    }
+    const when = (x) => x && x.verified_at ? ` · verified ${CIQ.esc(CIQ.fmtDate(x.verified_at))}` : "";
+    const src = (x) => x ? ` <span class="muted" style="font-size:12px">(${CIQ.esc(x.source)}${when(x)})</span>` : "";
+    const person = [vc.contact_name, vc.title].filter(Boolean).join(", ");
+    const rows = [];
+    if (!o.compact || vc.contact_name) rows.push(`<div><span>Contact</span>${CIQ.esc(person || "Business line (no named contact)")}</div>`);
+    if (vc.phone && (!o.compact || o.show !== "email"))
+      rows.push(`<div><span>Phone</span><a href="tel:${CIQ.esc(vc.phone.value)}">${CIQ.esc(vc.phone.value)}</a>${src(vc.phone)}</div>`);
+    if (vc.email && (!o.compact || o.show !== "phone"))
+      rows.push(`<div><span>Email</span><a href="mailto:${CIQ.esc(vc.email.value)}">${CIQ.esc(vc.email.value)}</a>${src(vc.email)}</div>`);
+    if (vc.address && !o.compact) rows.push(`<div><span>Address</span>${CIQ.esc(vc.address.value)}${src(vc.address)}</div>`);
+    if (vc.website && !o.compact) rows.push(`<div><span>Website</span>${CIQ.esc(vc.website.value)}</div>`);
+    return `<div class="contact-block">
+      <div><span class="badge green">Verified</span> ${CIQ.esc(vc.status_label)}${vc.last_verified ? ` · last verified ${CIQ.esc(CIQ.fmtDate(vc.last_verified))}` : ""}</div>
+      <div class="cc-meta">${rows.join("")}</div>
+    </div>`;
+  };
+
+  // Trust-checked accounts for today. The server decides who is listed; the
+  // list is never padded, so an empty list is a real answer.
+  CIQ.renderTodaysAccounts = function (el, payload) {
+    if (!el) return;
+    const p = payload || {};
+    const items = p.items || [];
+    const ds = p.data_status || {};
+    const status = ds.note ? `<div class="muted" style="margin-bottom:8px">${CIQ.esc(ds.note)}</div>` : "";
+    if (!items.length) {
+      el.innerHTML = status + CIQ.emptyState({ compact: true, icon: "◎", title: "No accounts passed today's checks",
+        text: p.note || "The list is empty on purpose; it is not padded." });
+      return;
+    }
+    el.className = "grid-cards";
+    el.innerHTML = status + items.map((a) => {
+      const pr = a.project || {};
+      const list = (xs) => (xs || []).map((x) => `<li>${CIQ.esc(x)}</li>`).join("");
+      return `<div class="company-card">
+        <div class="cc-top">
+          <div>
+            <div class="cc-name"><a href="sales-company-profile.html?id=${a.company_id}">${CIQ.esc(a.display_name)}</a></div>
+            <div class="cc-loc">${CIQ.esc([pr.address, pr.city].filter(Boolean).join(", ") || "—")}</div>
+          </div>
+          <div class="stack" style="align-items:flex-end;gap:6px">
+            <span class="badge green">${CIQ.esc(a.action)}</span>
+            <span class="badge slate">Confidence ${CIQ.esc(a.confidence)}</span>
+          </div>
+        </div>
+        <div class="cc-reason">${CIQ.esc(a.why_now)}</div>
+        <div class="cc-meta">
+          <div><span>Trade</span>${CIQ.esc(a.trade)}</div>
+          <div><span>Permit</span>${CIQ.esc(pr.permit_number || "—")} · ${CIQ.esc(pr.activity_date || "—")}</div>
+          <div><span>Identity</span>${CIQ.esc(a.identity)}</div>
+        </div>
+        ${CIQ.verifiedContactBlock(a.contact_details, { compact: true, show: a.action === "Email" ? "email" : "phone" })}
+        ${a.uncertainty && a.uncertainty.length ? `<div class="muted"><strong>Uncertain:</strong><ul>${list(a.uncertainty)}</ul></div>` : ""}
+        <div class="muted"><strong>Verify before contact:</strong><ul>${list(a.verify_before_contact)}</ul></div>
+      </div>`;
+    }).join("");
+  };
+
+  CIQ.todayUTC = () => new Date().toISOString().slice(0, 10);
+  CIQ.daysSince = function (iso) {
+    if (!iso) return null;
+    const t = Date.parse(String(iso).slice(0, 10) + "T00:00:00Z");
+    if (isNaN(t)) return null;
+    return Math.floor((Date.now() - t) / 86400000);
+  };
+
+  CIQ.whyNow = function (p) {
+    const timing = CIQ.titleCase(p.opportunity_timing || "");
+    const stage = CIQ.titleCase((p.project_lifecycle || "").replace(/_/g, " "));
+    const when = p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : "";
+    const age = CIQ.daysSince(p.opportunity_date);
+    if (age === 0) return "New today — first contact window is open.";
+    if (age != null && age <= 2)
+      return `Updated ${age === 1 ? "yesterday" : age + "d ago"}${stage ? " · " + stage : ""}.`;
+    if (/excellent|immediate/i.test(timing))
+      return `Act now — buying window is open${stage ? ", " + stage.toLowerCase() : ""}.`;
+    if (/good/i.test(timing))
+      return `Good window to call${stage ? " during " + stage.toLowerCase() : ""}.`;
+    if (/late/i.test(timing))
+      return `Window closing${stage ? " — " + stage.toLowerCase() : ""}.`;
+    if (/historical/i.test(timing))
+      return "Historical job — context only, not a live buy.";
+    if (stage && when) return `${stage} as of ${when}.`;
+    if (stage) return `${stage} on your book.`;
+    return "Ranked opportunity on an assigned company.";
+  };
+
+  CIQ.bestContact = function (meta) {
+    meta = meta || {};
+    const name = (meta.full_name || meta.contact_name || "").trim();
+    const title = (meta.job_title || "").trim();
+    const role = (meta.primary_role || "").trim();
+    const phone = (meta.phone || meta.main_phone || "").trim();
+    const named = !!(name || phone);
+    let label = "No contact found";
+    if (name && title) label = name + " · " + title;
+    else if (name && phone) label = name + " · " + phone;
+    else if (name) label = name;
+    else if (phone) label = phone;
+    else if (title) label = title;
+    else if (role) label = CIQ.titleCase(role.replace(/_/g, " ")) + " (role on file)";
+    return { label, named, phone };
+  };
+  CIQ.bestContactLabel = function (meta) { return CIQ.bestContact(meta).label; };
+
+  // Contact for an opportunity row. The API attaches the same verified view the
+  // company page shows; only verified values count as a usable contact.
+  CIQ.itemContact = function (p, meta) {
+    const c = p && p.contact;
+    if (!c) return CIQ.bestContact(meta);
+    if (c.status !== "VERIFIED") return { label: c.label || "Contact not yet verified.", named: false, phone: "" };
+    const who = [c.name, c.title].filter(Boolean).join(" · ");
+    const how = c.phone || c.email || "";
+    return { label: [who || "Business line", how].filter(Boolean).join(" · "), named: true, phone: c.phone || "" };
+  };
+
+  CIQ.oppBand = function (score) {
+    if (score == null || score === "") return { key: "none", label: "—", score: null };
+    const n = Number(score);
+    if (!isFinite(n)) return { key: "none", label: "—", score: null };
+    if (n >= 85) return { key: "high", label: "High", score: n };
+    if (n >= 70) return { key: "mid", label: "Priority", score: n };
+    return { key: "low", label: "Watch", score: n };
+  };
+
+  CIQ.oppSignals = function (p, contact) {
+    const out = [];
+    const age = CIQ.daysSince(p.opportunity_date);
+    const stage = String(p.project_lifecycle || "").toLowerCase();
+    const value = Number(p.estimated_material_value);
+    if (contact && contact.named) out.push({ t: "Contact available", k: "pos" });
+    else out.push({ t: "No contact found", k: "warn" });
+    if (age === 0 || (age != null && age <= 3 && /submitted|application|permitting/.test(stage)))
+      out.push({ t: "New permit", k: "" });
+    else if (age != null && age <= 2) out.push({ t: "Recently updated", k: "" });
+    else if (age != null && age <= 7) out.push({ t: "Recent permit activity", k: "" });
+    if (isFinite(value) && value >= 100000) out.push({ t: "Large project", k: "" });
+    if (p.permit_count != null && Number(p.permit_count) >= 3)
+      out.push({ t: "Repeat contractor", k: "" });
+    return out.slice(0, 3);
+  };
+
+  CIQ.oppDetailsHref = function (p) {
+    if (p && p.company_id) return "sales-company-profile.html?id=" + p.company_id;
+    return "opportunities.html";
+  };
+
+  CIQ.summarizeOpportunities = function (opts) {
+    opts = opts || {};
+    const items = opts.items || [];
+    const k = opts.kpis || {};
+    const meta = opts.companyMeta || {};
+    const today = CIQ.todayUTC();
+    const pipeline = items.reduce((s, p) => s + (Number(p.estimated_material_value) || 0), 0);
+    const newToday = items.filter((p) => String(p.opportunity_date || "").slice(0, 10) === today).length;
+    const missing = items.filter((p) => !CIQ.itemContact(p, meta[p.company_id]).named).length;
+    return {
+      highPriority: k.high_priority_opportunities != null
+        ? k.high_priority_opportunities
+        : items.filter((p) => (p.opportunity_score || 0) >= 85).length,
+      pipelineValue: pipeline,
+      newToday: k.new_submitted_opportunities != null ? k.new_submitted_opportunities : newToday,
+      missingContact: missing,
+      total: opts.total != null ? opts.total : items.length,
+    };
+  };
+
+  CIQ.renderExecStrip = function (el, stats, opts) {
+    if (!el) return;
+    opts = opts || {};
+    const listHref = opts.listHref || "opportunities.html";
+    const s = stats || {};
+    const blocks = [
+      { k: "High priority", v: Number(s.highPriority || 0).toLocaleString("en-US"), href: listHref, cls: "" },
+      { k: "Pipeline value", v: CIQ.moneyCompact(s.pipelineValue || 0), href: listHref, cls: "", title: CIQ.money(s.pipelineValue || 0) },
+      { k: "New today", v: Number(s.newToday || 0).toLocaleString("en-US"), href: listHref, cls: "" },
+      { k: "Missing contact", v: Number(s.missingContact || 0).toLocaleString("en-US"), href: "my-companies.html", cls: s.missingContact ? "is-warn" : "" },
+    ];
+    el.className = "dash-strip";
+    el.innerHTML = blocks.map((b) =>
+      `<a class="dash-strip-item ${b.cls}" href="${CIQ.esc(b.href)}"${b.title ? ` title="${CIQ.esc(b.title)}"` : ""}>
+        <div class="dash-strip-k">${CIQ.esc(b.k)}</div>
+        <div class="dash-strip-v">${CIQ.esc(b.v)}</div>
+      </a>`).join("");
+  };
+
+  CIQ.renderTopOpportunities = function (el, opts) {
+    opts = opts || {};
+    const all = opts.items || [];
+    const shown = all.slice(0, opts.limit || 6);
+    const listHref = opts.listHref || "opportunities.html";
+    const byCompany = opts.companyMeta || {};
+    const total = opts.total != null ? opts.total : all.length;
+    el.className = "";
+    const head = `<div class="dash-head">
+      <div><h2>Top opportunities</h2>
+        <span class="sub">${CIQ.esc(opts.contextLabel || "Best revenue openings right now")}${total ? " · " + total + " in this view" : ""}</span></div>
+      <a href="${CIQ.esc(listHref)}">View all</a>
+    </div>`;
+    if (!shown.length) {
+      el.innerHTML = head + CIQ.emptyState({
+        compact: true, icon: "◎", title: "No ranked opportunities",
+        text: opts.emptyMessage || "Projects tied to assigned companies will appear here, scored and ordered.",
+        action: `<a class="btn btn-sm" href="${CIQ.esc(listHref)}">Open opportunities</a>`,
+      });
+      return;
+    }
+    const rows = shown.map((p, i) => {
+      const project = p.job_address || p.permit_number || p.project_category || "Project";
+      const loc = [p.city || p.jurisdiction, p.state].filter(Boolean).join(", ")
+        || p.jurisdiction || "";
+      const locLine = [p.permit_number, loc].filter(Boolean).join(" · ");
+      const hasVal = p.estimated_material_value != null && p.estimated_material_value !== "";
+      const contact = CIQ.itemContact(p, byCompany[p.company_id]);
+      const band = CIQ.oppBand(p.opportunity_score);
+      const href = CIQ.oppDetailsHref(p);
+      const sigs = CIQ.oppSignals(p, contact).map((s) =>
+        `<span class="sig ${s.k}">${CIQ.esc(s.t)}</span>`).join("");
+      return `<article class="opp-row${i === 0 ? " is-top" : ""}">
+        <div class="opp-rank">${String(i + 1).padStart(2, "0")}</div>
+        <div>
+          <a class="opp-co" href="${href}">${CIQ.esc(p.display_name || "—")}</a>
+          <div class="opp-job">${CIQ.esc(project)}${locLine ? ` <span class="opp-loc">· ${CIQ.esc(locLine)}</span>` : ""}</div>
+          <div class="opp-sigs">${sigs}</div>
+        </div>
+        <div>
+          <div class="opp-val${hasVal ? "" : " is-empty"}" title="${hasVal ? CIQ.esc(CIQ.money(p.estimated_material_value)) : ""}">${hasVal ? CIQ.esc(CIQ.moneyCompact(p.estimated_material_value)) : "—"}</div>
+          <div class="opp-val-k">${band.score != null ? Math.round(band.score) + " · " + CIQ.esc(band.label) : "Est. value"}</div>
+        </div>
+        <div class="opp-contact-col">
+          <div class="opp-contact${contact.named ? "" : " is-missing"}">${CIQ.esc(contact.label)}</div>
+          <div class="opp-why">${CIQ.esc(CIQ.whyNow(p))}</div>
+        </div>
+        <div class="opp-act"><a class="btn btn-sm" href="${href}">Open</a></div>
+      </article>`;
+    }).join("");
+    el.innerHTML = `${head}<div class="opp-feed">${rows}</div>`;
+  };
 
   CIQ.pager = function (el, { page, pages, total, onPage }) {
     if (!pages || pages <= 1) { el.innerHTML = total != null ? `<span class="muted">${total} total</span>` : ""; return; }

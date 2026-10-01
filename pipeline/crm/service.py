@@ -11,7 +11,10 @@ from datetime import datetime, timezone
 from pipeline.auth.rbac import AuthzError, can_access_company, has_permission, require_permission
 from pipeline.auth.service import write_audit
 from pipeline.company_resolution import queries as ci_queries
-from pipeline.crm import serializers
+from pipeline.crm import scan_cache, serializers
+from pipeline.trust import account_view as trust
+from pipeline.trust.contacts import verified_contact_view
+from pipeline.trust.public import public_relevance
 
 RELATIONSHIP_STATUSES = {
     "new", "assigned", "researching", "attempted_contact", "contacted",
@@ -78,6 +81,8 @@ def get_company_detail(conn: sqlite3.Connection, user: dict, company_id: int,
         "roles": base["roles"],
         "aliases": base["aliases"],
         "contacts": base["contacts"],
+        # Best verified contact for this exact company, from the shared trust layer.
+        "verified_contact": verified_contact_view(conn, company_id),
         "data_quality": base["data_quality"],
         "relationship": serializers.serialize_relationship(rel) if rel else None,
     }
@@ -547,6 +552,28 @@ def priority_reason(row) -> str:
     return " · ".join(bits) if bits else "Assigned opportunity"
 
 
+_RELEVANCE_FILTERS = {
+    "promotable": trust.PROMOTABLE,
+    "core": (trust.CORE,),
+    "adjacent": (trust.ADJACENT,),
+    "relevant": (trust.CORE, trust.ADJACENT),
+    "not_relevant": (trust.NOT_RELEVANT, trust.NOT_SALES_READY),
+}
+
+
+def relevance_reason(rel: dict | None, row) -> str:
+    """Why this account is (or is not) worth attention, in plain words.
+    Built from account relevance and observed activity, not the legacy tier."""
+    rel = rel or {"label": "Not yet assessed", "lanes": []}
+    bits = [rel["label"] + (f" ({', '.join(rel['lanes'])})" if rel.get("lanes") else "")]
+    recent = row["projects_last_30_days"] if _has(row, "projects_last_30_days") else None
+    if recent:
+        bits.append(f"{recent} new project{'s' if recent != 1 else ''} in 30d")
+    elif _has(row, "active_projects") and row["active_projects"]:
+        bits.append(f"{row['active_projects']} active project{'s' if row['active_projects'] != 1 else ''}")
+    return " · ".join(bits)
+
+
 def _has(row, key) -> bool:
     try:
         return key in row.keys()
@@ -616,13 +643,19 @@ def list_my_companies(conn: sqlite3.Connection, user: dict, filters: dict | None
     if rep not in (None, "") and has_permission(user, "companies.view"):
         where.append("r.assigned_user_id=?")
         params.append(int(rep))
+    # Account relevance comes from the shared trust layer (sales-lane assignment).
+    rel_join, rel_rank, rel_params = trust.relevance_sql("c.id")
+    relevance = (filters.get("relevance") or "").strip()
+    wanted = _RELEVANCE_FILTERS.get(relevance)
+    if wanted:
+        where.append(f"{rel_rank} IN ({','.join(str(trust.RANK[s]) for s in wanted)})")
 
     where_sql = " AND ".join(where)
     total = conn.execute(
         f"SELECT COUNT(*) AS n FROM crm_company_relationships r "
         f"JOIN companies c ON c.id=r.company_id "
-        f"LEFT JOIN company_intelligence ci ON ci.company_id=c.id WHERE {where_sql}",
-        params).fetchone()["n"]
+        f"LEFT JOIN company_intelligence ci ON ci.company_id=c.id {rel_join} WHERE {where_sql}",
+        [*rel_params, *params]).fetchone()["n"]
 
     page = max(1, int(filters.get("page", 1) or 1))
     try:
@@ -646,20 +679,28 @@ def list_my_companies(conn: sqlite3.Connection, user: dict, filters: dict | None
         JOIN companies c ON c.id = r.company_id
         LEFT JOIN company_intelligence ci ON ci.company_id = c.id
         LEFT JOIN users u ON u.id = r.assigned_user_id
+        {rel_join}
         WHERE {where_sql}
-        ORDER BY COALESCE(ci.company_priority_score,0) DESC,
+        ORDER BY {rel_rank} ASC, {trust.within_account_order()},
+                 COALESCE(ci.company_priority_score,0) DESC,
                  ci.latest_activity_date DESC
         LIMIT ? OFFSET ?
         """,
-        [*params, page_size, (page - 1) * page_size],
+        [*rel_params, *params, page_size, (page - 1) * page_size],
     ).fetchall()
+    relevance_by_id = trust.relevance_for(conn, [r["company_id"] for r in rows])
     items = []
     for r in rows:
         d = dict(r)
-        d["reason"] = priority_reason(r)
+        rel = relevance_by_id.get(r["company_id"])
+        d["account_relevance"] = public_relevance(rel)
+        d["reason"] = relevance_reason(rel, r)
         d["recommended_action"] = recommended_action(
             r["relationship_status"], r["next_followup_at"], r["last_contact_at"],
             r["do_not_contact"])
+        off_focus = rel and rel["status"] in (trust.NOT_RELEVANT, trust.NOT_SALES_READY)
+        if off_focus and d["recommended_action"] not in ("Do not contact", "Closed — lost"):
+            d["recommended_action"] = "Review fit before more outreach"
         d["followup_overdue"] = _followup_overdue(r["next_followup_at"])
         items.append(d)
     return {"items": items, "total": total, "page": page, "page_size": page_size,
@@ -693,12 +734,11 @@ def dashboard(conn: sqlite3.Connection, user: dict) -> dict:
         f"SELECT COUNT(*) AS n FROM crm_company_relationships r WHERE r.organization_id=? "
         f"{assigned_filter} AND r.relationship_status='assigned'",
         base_params)
+    rel_join, rel_rank, rel_params = trust.relevance_sql("r.company_id")
     high_priority_opps = _scalar(
-        f"SELECT COUNT(*) AS n FROM crm_company_relationships r "
-        f"LEFT JOIN company_intelligence ci ON ci.company_id=r.company_id "
-        f"WHERE r.organization_id=? {assigned_filter} AND ci.company_priority_tier "
-        f"IN ('Critical','High')",
-        base_params)
+        f"SELECT COUNT(*) AS n FROM crm_company_relationships r {rel_join} "
+        f"WHERE r.organization_id=? {assigned_filter} AND {rel_rank} = {trust.RANK[trust.CORE]}",
+        [*rel_params, *base_params])
     quotes_requested = _scalar(
         f"SELECT COUNT(*) AS n FROM crm_company_relationships r WHERE r.organization_id=? "
         f"{assigned_filter} AND r.relationship_status IN ('quote_requested','quote_sent')",
@@ -717,9 +757,11 @@ def dashboard(conn: sqlite3.Connection, user: dict) -> dict:
         "WHERE a.organization_id=? AND a.user_id=? ORDER BY a.activity_at DESC LIMIT 10",
         (org_id, uid))]
 
-    # Priority companies needing action (Critical/High first, then those with a
-    # due follow-up or never contacted).
-    priority = list_my_companies(conn, user, {"page_size": 8})["items"][:8]
+    # Priority companies: worked relationships ordered by account relevance.
+    # Accounts outside the plumbing-supply focus stay in the full list but are
+    # never promoted here.
+    priority = list_my_companies(conn, user, {"page_size": 8, "relevance": "promotable"})["items"][:8]
+    today_accounts = _todays_accounts(conn, user, scoped=scoped)
 
     return {
         "scope": "organization" if scoped else "assignment",
@@ -733,6 +775,7 @@ def dashboard(conn: sqlite3.Connection, user: dict) -> dict:
             "quotes_requested": quotes_requested,
             "tasks_due_today": tasks_due,
             "my_companies": my_companies,
+            "accounts_to_act_on_today": len(today_accounts["items"]),
         },
         # Back-compat top-level keys.
         "my_companies": my_companies,
@@ -742,10 +785,31 @@ def dashboard(conn: sqlite3.Connection, user: dict) -> dict:
         "recent_activity": recent_activity,
         "high_priority_companies": priority,
         "priority_companies": priority,
+        "todays_accounts": today_accounts,
         "followups_due": followups_due(conn, user, limit=10),
         "recent_opportunity_activity": recent_opportunity_activity(conn, user, limit=8),
         "activity_summary": activity_summary(conn, user),
     }
+
+
+def _todays_accounts(conn: sqlite3.Connection, user: dict, *, scoped: bool) -> dict:
+    """Trust-gated accounts for today. Reps see only accounts assigned to them;
+    org-scoped roles see the whole queue. Do-not-contact relationships are removed.
+    Never creates CRM rows."""
+    org_id = user["organization_id"]
+    dnc = {r["company_id"] for r in conn.execute(
+        "SELECT company_id FROM crm_company_relationships WHERE organization_id=? "
+        "AND (do_not_contact=1 OR relationship_status='do_not_contact')", (org_id,))}
+    ids = None
+    if not scoped:
+        ids = {r["company_id"] for r in conn.execute(
+            "SELECT company_id FROM crm_company_relationships WHERE organization_id=? "
+            "AND assigned_user_id=?", (org_id, user["id"]))}
+    try:
+        return trust.todays_accounts(conn, company_ids=ids, exclude_ids=dnc)
+    except sqlite3.Error:
+        return {"items": [], "data_status": {"refresh": "Unknown", "note": "Account checks unavailable."},
+                "note": "Account checks are unavailable right now."}
 
 
 def followups_due(conn: sqlite3.Connection, user: dict, *, limit: int = 50,
@@ -801,7 +865,8 @@ def recent_opportunity_activity(conn: sqlite3.Connection, user: dict, *,
         SELECT pr.id AS project_id, r.company_id, c.display_name,
                p.jurisdiction, p.job_address, p.city, pr.project_lifecycle,
                pr.opportunity_score, pr.opportunity_date, pr.opportunity_timing,
-               pr.project_category
+               pr.project_category, p.permit_type, p.permit_subtype, p.description,
+               p.project_description
         FROM crm_company_relationships r
         JOIN companies c ON c.id=r.company_id
         JOIN projects pr ON pr.contractor_company_id=c.id
@@ -809,8 +874,8 @@ def recent_opportunity_activity(conn: sqlite3.Connection, user: dict, *,
         WHERE {' AND '.join(where)}
         ORDER BY pr.opportunity_date DESC LIMIT ?
         """,
-        [*params, limit]).fetchall()
-    return [dict(r) for r in rows]
+        [*params, limit * 20]).fetchall()
+    return trust.annotate_projects([dict(r) for r in rows], conn=conn)[:limit]
 
 
 def activity_summary(conn: sqlite3.Connection, user: dict, *, days: int = 30) -> dict:
@@ -837,61 +902,241 @@ def activity_summary(conn: sqlite3.Connection, user: dict, *, days: int = 30) ->
     }
 
 
-def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = None) -> dict:
-    """Projects across the user's assigned companies, ranked by opportunity score."""
+# Upper bound on project rows scanned when filtering by trade scope in Python.
+_SCOPE_SCAN_LIMIT = 5000
+
+OPPORTUNITY_CONTEXTS = ("assigned", "organization")
+
+
+def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = None,
+                  *, all_rows: bool = False) -> dict:
+    """Projects in an explicit context, ranked by opportunity score.
+
+    context=assigned (default): projects of companies with a CRM relationship
+    (reps: only their own). context=organization: every project in the recent
+    trust window, attributed or not; needs companies.view. Both contexts apply
+    the same trust-layer project checks; scope=all shows everything, labelled.
+    The dashboard's Top Opportunities is page 1 of this same call, and the
+    opportunity map is all_rows=True of it (every row, unpaged, same filters)."""
     require_permission(user, "projects.view_assigned")
     from pipeline.config import settings as _s
     filters = filters or {}
+    context = (filters.get("context") or "assigned").strip().lower()
+    if context not in OPPORTUNITY_CONTEXTS:
+        raise ValidationError("unknown opportunities context")
+    if context == "organization" and not has_permission(user, "companies.view"):
+        raise AuthzError("organization opportunities require companies.view")
     org_id = user["organization_id"]
-    where = ["r.organization_id=?"]
-    params: list = [org_id]
-    if not has_permission(user, "companies.view"):
-        where.append("r.assigned_user_id=?")
-        params.append(user["id"])
+    extra, extra_params = [], []
     q = (filters.get("q") or "").strip()
     if q:
-        where.append("(c.display_name LIKE ? OR p.job_address LIKE ? OR p.jurisdiction LIKE ?)")
-        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+        extra.append("(c.display_name LIKE ? OR p.job_address LIKE ? OR p.jurisdiction LIKE ?)")
+        extra_params += [f"%{q}%", f"%{q}%", f"%{q}%"]
     lifecycle = (filters.get("lifecycle") or "").strip()
     if lifecycle:
-        where.append("pr.project_lifecycle=?")
-        params.append(lifecycle)
+        extra.append("pr.project_lifecycle=?")
+        extra_params.append(lifecycle)
     smin = filters.get("score_min")
     if smin not in (None, ""):
-        where.append("COALESCE(pr.opportunity_score,0) >= ?")
-        params.append(float(smin))
+        extra.append("COALESCE(pr.opportunity_score,0) >= ?")
+        extra_params.append(float(smin))
+    # Projects that name only a non-wet trade, or belong to an account outside the
+    # plumbing-supply focus, are hidden unless scope=all. Ranking is unchanged.
+    include_all = str(filters.get("scope") or "").lower() == "all"
 
-    where_sql = " AND ".join(where)
-    total = conn.execute(
-        f"SELECT COUNT(*) AS n FROM crm_company_relationships r "
-        f"JOIN companies c ON c.id=r.company_id "
-        f"JOIN projects pr ON pr.contractor_company_id=c.id "
-        f"JOIN permits p ON p.id=pr.permit_id WHERE {where_sql}", params).fetchone()["n"]
+    if context == "assigned":
+        where = ["r.organization_id=?"]
+        params: list = [org_id]
+        if not has_permission(user, "companies.view"):
+            where.append("r.assigned_user_id=?")
+            params.append(user["id"])
+        source = ("FROM crm_company_relationships r JOIN companies c ON c.id=r.company_id "
+                  "JOIN projects pr ON pr.contractor_company_id=c.id JOIN permits p ON p.id=pr.permit_id")
+        company_col = "r.company_id"
+    else:
+        where = [f"substr(COALESCE(NULLIF(TRIM(p.issued_date),''), p.filed_date, pr.opportunity_date),1,10) >= ?"]
+        params = [_window_start()]
+        source = ("FROM projects pr JOIN permits p ON p.id=pr.permit_id "
+                  "LEFT JOIN companies c ON c.id=COALESCE(pr.contractor_company_id, p.contractor_company_id)")
+        company_col = "c.id"
+    where_sql = " AND ".join(where + extra)
+    all_params = [*params, *extra_params]
+    select_sql = f"""
+        SELECT pr.id AS project_id, {company_col} AS company_id, c.display_name,
+               p.permit_number, p.jurisdiction, p.job_address, p.city, p.state,
+               p.description, p.project_description, p.permit_type, p.permit_subtype,
+               pr.project_category, pr.project_lifecycle,
+               pr.opportunity_score, pr.opportunity_date, pr.opportunity_timing,
+               pr.estimated_material_value, p.latitude, p.longitude, p.raw_source_json
+        {source}
+        WHERE {where_sql}
+        ORDER BY COALESCE(pr.opportunity_score,0) DESC, pr.opportunity_date DESC
+        LIMIT ? OFFSET ?
+        """
+
+    # The count and the candidate scan are shared per data signature: the list
+    # and the map (requested together) run them once. The key holds everything
+    # the scan reads, so a cached result equals a fresh one.
+    sig = scan_cache.data_signature(conn, org_id)
+    scope_key = (context, org_id, None if has_permission(user, "companies.view") else user["id"],
+                 where_sql, tuple(all_params), include_all)
+
+    def _count() -> int:
+        return conn.execute(f"SELECT COUNT(*) AS n {source} WHERE {where_sql}", all_params).fetchone()["n"]
+
+    def _scan() -> tuple:
+        rows = conn.execute(select_sql, [*all_params, _SCOPE_SCAN_LIMIT, 0]).fetchall()
+        scanned = trust.annotate_projects([dict(r) for r in rows], include_all=include_all, conn=conn)
+        _attach_locations(scanned)
+        return tuple(scanned)
+
+    total = scan_cache.get_or_compute(None if sig is None else ("count", sig, scope_key), _count)
+    before_checks = total
     page = max(1, int(filters.get("page", 1) or 1))
     try:
         page_size = int(filters.get("page_size") or _s.CRM_PAGE_SIZE_DEFAULT)
     except (TypeError, ValueError):
         page_size = _s.CRM_PAGE_SIZE_DEFAULT
     page_size = max(1, min(page_size, _s.CRM_PAGE_SIZE_MAX))
-    rows = conn.execute(
-        f"""
-        SELECT pr.id AS project_id, r.company_id, c.display_name,
-               p.permit_number, p.jurisdiction, p.job_address, p.city, p.state,
-               p.description, pr.project_category, pr.project_lifecycle,
-               pr.opportunity_score, pr.opportunity_date, pr.opportunity_timing,
-               pr.estimated_material_value,
-               (SELECT COUNT(*) FROM permits pp WHERE pp.contractor_company_id=c.id) AS permit_count
-        FROM crm_company_relationships r
-        JOIN companies c ON c.id=r.company_id
-        JOIN projects pr ON pr.contractor_company_id=c.id
-        JOIN permits p ON p.id=pr.permit_id
-        WHERE {where_sql}
-        ORDER BY COALESCE(pr.opportunity_score,0) DESC, pr.opportunity_date DESC
-        LIMIT ? OFFSET ?
-        """,
-        [*params, page_size, (page - 1) * page_size]).fetchall()
-    return {"items": [dict(r) for r in rows], "total": total, "page": page,
+    if include_all and not all_rows:
+        # scope=all list pages: SQL does the paging; only this page is read.
+        rows = conn.execute(select_sql, [*all_params, page_size, (page - 1) * page_size]).fetchall()
+        items = trust.annotate_projects([dict(r) for r in rows], include_all=include_all, conn=conn)
+        _attach_locations(items)
+    else:
+        scanned = scan_cache.get_or_compute(None if sig is None else ("scan", sig, scope_key), _scan)
+        # With scope=all the total is the SQL count; otherwise it is what passed the
+        # checks among the scanned candidates. all_rows never changes the total.
+        if not include_all:
+            total = len(scanned)
+        chosen = scanned if all_rows else scanned[(page - 1) * page_size: page * page_size]
+        items = [dict(i) for i in chosen]  # per-request copies; the cache is never mutated
+    # When candidates exceed the scan cap, only the top-scoring ones are checked
+    # (default) or loaded (all_rows). Say so instead of implying completeness.
+    scan_limited = before_checks > _SCOPE_SCAN_LIMIT and (not include_all or all_rows)
+    _attach_permit_counts_and_contacts(conn, items, permit_counts=not all_rows)
+    reason, message = _empty_reason(conn, user, context, filtered=bool(extra), total=total,
+                                    before_checks=before_checks, include_all=include_all)
+    hidden = before_checks - total if not include_all and before_checks <= _SCOPE_SCAN_LIMIT else None
+    return {"items": items, "total": total, "page": page, "context": context,
+            "include_all_scopes": include_all, "hidden_by_checks": hidden,
+            "candidates": before_checks, "scan_limit": _SCOPE_SCAN_LIMIT if scan_limited else None,
+            "empty_reason": reason, "empty_message": message,
             "page_size": page_size, "pages": (total + page_size - 1) // page_size if page_size else 1}
+
+
+def opportunity_map(conn: sqlite3.Connection, user: dict, filters: dict | None = None) -> dict:
+    """Map layer for the opportunity feed. Same function, same filters, same
+    trust checks as opportunities(); only the rows with a source-published
+    location are placed. Unplaced rows are counted by jurisdiction, never
+    guessed onto the map."""
+    from collections import Counter
+
+    feed = opportunities(conn, user, filters, all_rows=True)
+    points, unplaced = [], Counter()
+    for it in feed["items"]:
+        loc = it.get("location")
+        if loc is None:
+            unplaced[it.get("jurisdiction") or "unknown"] += 1
+            continue
+        c = it.get("contact") or {}
+        points.append({
+            "project_id": it["project_id"], "company_id": it.get("company_id"),
+            "display_name": it.get("display_name"), "permit_number": it.get("permit_number"),
+            "job_address": it.get("job_address"), "jurisdiction": it.get("jurisdiction"),
+            "trade_scope": it.get("trade_scope"), "opportunity_score": it.get("opportunity_score"),
+            "opportunity_date": it.get("opportunity_date"),
+            "account_relevance": it.get("account_relevance"),
+            "contact": {"status": c.get("status"), "label": c.get("label"),
+                        "name": c.get("name"), "phone": c.get("phone"), "email": c.get("email")},
+            "lat": loc["lat"], "lon": loc["lon"], "precision": loc["precision"],
+        })
+    # total is always the feed's total; placed + unplaced + not_loaded == total.
+    return {
+        "context": feed["context"], "include_all_scopes": feed["include_all_scopes"],
+        "total": feed["total"], "placed": len(points), "unplaced": sum(unplaced.values()),
+        "not_loaded": feed["total"] - len(feed["items"]),
+        "candidates": feed["candidates"], "scan_limit": feed["scan_limit"],
+        "unplaced_by_jurisdiction": dict(unplaced.most_common()),
+        "points": points,
+        "empty_reason": feed["empty_reason"], "empty_message": feed["empty_message"],
+        "location_note": ("Only coordinates published by the permit source are mapped; permits "
+                          "without them are listed but not placed."),
+    }
+
+
+def _window_start() -> str:
+    from datetime import timedelta
+
+    from pipeline.trust.gates import REVIEW_WINDOW_DAYS
+    return (datetime.now(timezone.utc) - timedelta(days=REVIEW_WINDOW_DAYS)).strftime("%Y-%m-%d")
+
+
+def _attach_locations(items: list[dict]) -> None:
+    """Replace raw coordinate columns with the source-published location, or
+    None. Raw source JSON never leaves the server."""
+    from pipeline.trust.geo import permit_location
+    for it in items:
+        loc = permit_location(it)
+        for k in ("latitude", "longitude", "raw_source_json"):
+            it.pop(k, None)
+        it["location"] = loc
+
+
+def _attach_permit_counts_and_contacts(conn: sqlite3.Connection, items: list[dict],
+                                       *, permit_counts: bool = True) -> None:
+    """Per page only. The contact summary is the same verified view the company
+    page shows, so a list row can never claim a contact the page does not have."""
+    cache: dict[int, dict] = {}
+    for it in items:
+        cid = it.get("company_id")
+        if cid is None:
+            it["permit_count"] = None
+            it["contact"] = {"status": "NO_COMPANY", "label": "No contractor attributed to this permit"}
+            continue
+        it["permit_count"] = conn.execute(
+            "SELECT COUNT(*) AS n FROM permits WHERE contractor_company_id=?",
+            (cid,)).fetchone()["n"] if permit_counts else None
+        if cid not in cache:
+            v = verified_contact_view(conn, cid)
+            verified = v["status"] == "VERIFIED"
+            cache[cid] = {
+                "status": v["status"],
+                "label": v["status_label"],
+                "name": v["contact_name"] if verified else None,
+                "title": v["title"] if verified else None,
+                "phone": v["phone"]["value"] if verified and v["phone"] else None,
+                "email": v["email"]["value"] if verified and v["email"] else None,
+            }
+        it["contact"] = cache[cid]
+
+
+def _empty_reason(conn, user, context, *, filtered, total, before_checks, include_all):
+    if total:
+        return None, None
+    if context == "assigned":
+        where, params = "organization_id=?", [user["organization_id"]]
+        if not has_permission(user, "companies.view"):
+            where += " AND assigned_user_id=?"
+            params.append(user["id"])
+        n_rel = conn.execute(f"SELECT COUNT(*) AS n FROM crm_company_relationships WHERE {where}",
+                             params).fetchone()["n"]
+        if n_rel == 0:
+            if has_permission(user, "companies.view"):
+                return "NO_RELATIONSHIPS", ("No companies have CRM relationships yet, so the assigned view is empty. "
+                                            "Switch to the organization view to see all current opportunities.")
+            return "NO_ASSIGNED_COMPANIES", ("No companies are assigned to you yet. "
+                                             "Opportunities appear here for companies you are assigned.")
+    if filtered:
+        return "FILTERED", "No opportunities match the current search or filters."
+    if before_checks and not include_all:
+        scope = "these companies" if context == "assigned" else "the last 60 days"
+        return "NONE_PASS_CHECKS", (
+            f"{before_checks} project{'s' if before_checks != 1 else ''} in {scope} did not pass the "
+            "plumbing-supply checks (the permit names only non-wet work, or the account is outside the "
+            "plumbing-supply focus). Choose \"Include all scopes\" to review them.")
+    return "NO_PROJECTS", ("There are no current projects for these companies." if context == "assigned"
+                           else "There are no projects in the last 60 days.")
 
 
 def my_activity(conn: sqlite3.Connection, user: dict, filters: dict | None = None) -> dict:

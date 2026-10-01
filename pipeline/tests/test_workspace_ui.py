@@ -217,7 +217,10 @@ def test_estimator_work_queue_accessible(env):
 def test_list_reason_and_recommended_action(env):
     res = crm.list_my_companies(env["conn"], env["rep"])
     item = res["items"][0]
-    assert "Critical" in item["reason"]
+    # The reason comes from account relevance (trust layer), not the legacy tier.
+    assert "Not yet assessed" in item["reason"]
+    assert "Critical" not in item["reason"]
+    assert item["account_relevance"]["status"] == "NOT_ASSESSED"
     assert item["recommended_action"] == "Make first contact"  # never contacted
     assert item["followup_overdue"] is False
 

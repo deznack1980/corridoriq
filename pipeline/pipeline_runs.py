@@ -279,6 +279,16 @@ def run_morning_refresh(
     )
     conn.commit()
 
+    # Source health telemetry (Phase 2). Evaluated after every jurisdiction has
+    # been attempted so the snapshot reflects a complete round. Guarded: a
+    # reporting failure must not fail an otherwise successful refresh.
+    from pipeline.telemetry.source_health import record_snapshot_safe
+
+    for health in record_snapshot_safe(conn):
+        if health["health_state"] not in ("healthy", "unknown"):
+            log(f"[health] {health['jurisdiction_slug']}: "
+                f"{health['health_state'].upper()} - {health['detail']}")
+
     # Notifications + dashboard feed + timestamped log.
     _write_summary_markdown(summary)
     _export_status_json(conn)
@@ -308,6 +318,14 @@ def _refresh_company_intelligence(conn: sqlite3.Connection) -> None:
     backfill_companies(conn, resume=True)
     compute_company_metrics(conn)
     rebuild_company_timeline(conn)
+    from pipeline.contractor_intel.classify import classify_companies
+    from pipeline.relevance.classify import score_project_relevance
+
+    classify_companies(conn)
+    score_project_relevance(conn)
+    from pipeline.relevance.account import score_company_accounts
+
+    score_company_accounts(conn)
     export_companies(conn)
 
 

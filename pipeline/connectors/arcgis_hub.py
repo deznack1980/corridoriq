@@ -26,6 +26,29 @@ from pipeline.connectors.base import BaseConnector, ConnectorNotConfiguredError
 ESRI_PAGE_SIZE = 1000
 
 
+class EsriFeature(dict):
+    """A feature's attributes (the dict itself) with its geometry alongside.
+
+    The geometry is an attribute, not a key, so the stored raw payload
+    (``raw_source_json``) and its RAW-capture hash stay exactly the attribute
+    record the source published; only mapped fields such as latitude and
+    longitude read it.
+    """
+
+    def __init__(self, attributes: dict, geometry: Optional[dict] = None):
+        super().__init__(attributes or {})
+        self.geometry = geometry or None
+
+
+def _geometry_coord(raw, axis: str) -> Optional[float]:
+    geometry = getattr(raw, "geometry", None) or {}
+    value = geometry.get(axis)
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class ArcGISHubConnector(BaseConnector):
     def __init__(
         self,
@@ -35,6 +58,7 @@ class ArcGISHubConnector(BaseConnector):
         date_field: Optional[str] = None,
         city_name: Optional[str] = None,
         supports_pagination: bool = True,
+        point_geometry_wgs84: bool = False,
     ):
         super().__init__(jurisdiction_slug)
         self.service_url = service_url.rstrip("/") if service_url else None
@@ -45,6 +69,9 @@ class ArcGISHubConnector(BaseConnector):
         # resultOffset with "Pagination is not supported." — those must be
         # fetched in a single request within maxRecordCount.
         self.supports_pagination = supports_pagination
+        # Point layers can return each feature's location; ask for it in
+        # WGS84 (outSR=4326) so no client-side reprojection is needed.
+        self.point_geometry_wgs84 = point_geometry_wgs84
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": HTTP_USER_AGENT})
 
@@ -71,6 +98,9 @@ class ArcGISHubConnector(BaseConnector):
             if self.supports_pagination:
                 params["resultOffset"] = offset
                 params["resultRecordCount"] = ESRI_PAGE_SIZE
+            if self.point_geometry_wgs84:
+                params["returnGeometry"] = "true"
+                params["outSR"] = "4326"
             response = self.session.get(f"{self.service_url}/query", params=params, timeout=30)
             response.raise_for_status()
             payload = response.json()
@@ -90,7 +120,10 @@ class ArcGISHubConnector(BaseConnector):
                 break
 
             for feature in features:
-                yield feature.get("attributes", {})
+                if self.point_geometry_wgs84:
+                    yield EsriFeature(feature.get("attributes", {}), feature.get("geometry"))
+                else:
+                    yield feature.get("attributes", {})
 
             if not self.supports_pagination or len(features) < ESRI_PAGE_SIZE:
                 break
@@ -458,16 +491,23 @@ PHOENIX_FIELD_MAP = {
     "finaled_date": lambda raw: _epoch_ms_to_date(raw.get("PER_COMPL_DATE")),
     "job_address": "STREET_FULL_NAME",
     "general_contractor_name": _phoenix_contractor,
+    # Point geometry requested in WGS84 (x = longitude, y = latitude).
+    # Out-of-Arizona values are nulled, never corrected.
+    "latitude": lambda raw: _valid_az_latitude(_geometry_coord(raw, "y")),
+    "longitude": lambda raw: _valid_az_longitude(_geometry_coord(raw, "x")),
 }
+
+PHOENIX_SERVICE_URL = "https://maps.phoenix.gov/pub/rest/services/Public/Planning_Permit/MapServer/1"
 
 
 def build_phoenix_connector() -> ArcGISHubConnector:
     return ArcGISHubConnector(
         jurisdiction_slug="phoenix_az",
-        service_url="https://maps.phoenix.gov/pub/rest/services/Public/Planning_Permit/MapServer/1",
+        service_url=PHOENIX_SERVICE_URL,
         field_map=PHOENIX_FIELD_MAP,
         date_field="PER_ISSUE_DATE",
         city_name="Phoenix",
+        point_geometry_wgs84=True,
     )
 
 

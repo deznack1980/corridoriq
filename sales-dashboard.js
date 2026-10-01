@@ -2,26 +2,36 @@
 (function () {
   let data = null;
 
-  const KPI_DEFS = [
-    ["calls_due_today", "Calls due today", "☎", "my-companies.html?view=followup", "warn"],
-    ["overdue_followups", "Overdue follow-ups", "⚠", "my-companies.html?view=overdue", "alert"],
-    ["new_assigned_companies", "New assigned", "＋", "my-companies.html?status=assigned", ""],
-    ["high_priority_opportunities", "High-priority", "◎", "my-companies.html?tier=Critical", "good"],
-    ["appointments_scheduled", "Appointments", "◷", "activity.html", ""],
-    ["quotes_requested", "Quotes requested", "$", "my-companies.html?status=quote_requested", ""],
-  ];
+  function companyMetaMap(companies) {
+    const map = {};
+    (companies || []).forEach((c) => {
+      map[c.company_id] = {
+        primary_role: c.primary_role,
+        full_name: c.contact_name || c.full_name,
+        job_title: c.job_title,
+        phone: c.main_phone || c.phone,
+      };
+    });
+    return map;
+  }
 
-  function renderKpis() {
-    const k = data.kpis || {};
-    document.getElementById("kpis").innerHTML = KPI_DEFS.map(([key, label, ico, href, cls]) => {
-      const v = k[key] || 0;
-      const alertCls = (key === "overdue_followups" && v > 0) ? "alert"
-        : (key === "calls_due_today" && v > 0) ? "warn" : cls;
-      return `<a class="kpi ${alertCls}" href="${href}">
-        <span class="kpi-ico">${ico}</span>
-        <div class="kpi-val">${v}</div>
-        <div class="kpi-label">${label}</div></a>`;
-    }).join("");
+  // The map workspace (map + feed) uses the assigned context; its View all
+  // opens the same context and scope. The stat strip uses the same feed.
+  const OPP_CONTEXT = "assigned";
+  const OPP_HREF = "opportunities.html?context=" + OPP_CONTEXT;
+
+  function renderFeed(companies) {
+    const k = (data && data.kpis) || {};
+    const companyMeta = companyMetaMap(companies);
+    CIQ.mapWorkspace(document.getElementById("mapWorkspace"), {
+      context: OPP_CONTEXT,
+      todaysAccounts: (data.todays_accounts && data.todays_accounts.items) || [],
+      onLoaded: (feed) => {
+        const items = feed.items || [];
+        const stats = CIQ.summarizeOpportunities({ items, kpis: k, companyMeta, total: feed.total });
+        CIQ.renderExecStrip(document.getElementById("execStrip"), stats, { listHref: OPP_HREF });
+      },
+    });
   }
 
   function companyCard(c) {
@@ -34,7 +44,7 @@
           <div class="cc-loc">${CIQ.esc([c.city, c.state].filter(Boolean).join(", ") || "—")}</div>
         </div>
         <div class="stack" style="align-items:flex-end;gap:6px">
-          ${CIQ.tierBadge(c.company_priority_tier)}
+          ${CIQ.relevanceBadge(c.account_relevance)}
           ${CIQ.statusBadge(c.relationship_status)}
         </div>
       </div>
@@ -84,7 +94,7 @@
     const el = document.getElementById("followups");
     const items = data.followups_due || [];
     if (!items.length) {
-      el.innerHTML = CIQ.emptyState({ icon: "✓", title: "No follow-ups due", text: "You're all caught up." });
+      el.innerHTML = CIQ.emptyState({ compact: true, icon: "✓", title: "No follow-ups due", text: "You're all caught up." });
       return;
     }
     el.innerHTML = `<div class="table-wrap"><table class="tbl responsive"><thead><tr>
@@ -101,93 +111,22 @@
       CIQ.logActivity({ companyId: Number(b.dataset.id), companyName: b.dataset.name, onSaved: load })));
   }
 
-  function renderOpps() {
-    const el = document.getElementById("opps");
-    const items = data.recent_opportunity_activity || [];
-    if (!items.length) {
-      el.innerHTML = CIQ.emptyState({ title: "No recent project activity", text: "New permits and projects tied to your companies will show here." });
-      return;
-    }
-    el.className = "grid-cards";
-    el.innerHTML = items.map((p) => `<div class="company-card">
-      <div class="cc-top">
-        <div><div class="cc-name" style="font-size:14.5px">${CIQ.esc(p.job_address || p.jurisdiction || "Project")}</div>
-          <div class="cc-loc">${CIQ.esc(p.display_name)} · ${CIQ.esc(p.jurisdiction || p.city || "")}</div></div>
-        <span class="score-chip">${p.opportunity_score != null ? Math.round(p.opportunity_score) : "—"}</span>
-      </div>
-      <div class="cc-meta">
-        <div><span>Stage</span>${CIQ.esc(CIQ.titleCase(p.project_lifecycle || "—"))}</div>
-        <div><span>Timing</span>${CIQ.esc(CIQ.titleCase(p.opportunity_timing || "—"))}</div>
-        <div><span>Category</span>${CIQ.esc(CIQ.titleCase(p.project_category || "—"))}</div>
-        <div><span>Opportunity</span>${p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : "—"}</div>
-      </div>
-      <div class="cc-quick"><a class="btn btn-sm btn-ghost" href="sales-company-profile.html?id=${p.company_id}">Open company</a></div>
-    </div>`).join("");
-  }
-
   const REFRESH_CLASS = { succeeded: "green", partial: "amber", failed: "red", running: "" };
-
-  function freshnessRows(freshness) {
-    if (!freshness || !freshness.length) return "";
-    const bad = freshness.filter((j) => j.status !== "Current");
-    const rows = (bad.length ? bad : freshness).map((j) => {
-      const cls = j.status === "Current" ? "green" : j.status === "Delayed" ? "amber" : "red";
-      return `<tr><td data-label="Jurisdiction">${CIQ.esc(j.name)}</td>
-        <td data-label="Status"><span class="badge ${cls}">${CIQ.esc(j.status)}</span></td>
-        <td data-label="Newest source">${j.newest_source_date ? CIQ.fmtDate(j.newest_source_date) : "—"}</td>
-        <td data-label="Received today">${j.records_received_today || 0}</td></tr>`;
-    }).join("");
-    const heading = bad.length ? "Jurisdictions needing attention" : "All jurisdictions current";
-    return `<div class="section-title" style="margin-top:14px">${heading}</div>
-      <div class="table-wrap"><table class="tbl responsive"><thead><tr>
-      <th>Jurisdiction</th><th>Status</th><th>Newest source</th><th>Received today</th>
-      </tr></thead><tbody>${rows}</tbody></table></div>`;
-  }
 
   async function renderRefresh() {
     const el = document.getElementById("refreshCard");
-    const canMonitor = CIQ.hasPerm("pipeline.monitor");
     let simple;
     try { simple = await CIQ.api.get("/api/status/refresh"); }
     catch (e) { el.innerHTML = ""; return; }
     const status = simple.status || "none";
     const cls = REFRESH_CLASS[status] || "";
     const when = simple.last_completed ? CIQ.relTime(simple.last_completed) : "—";
-
-    if (!canMonitor) {
-      // Employees see a single, non-technical line only.
-      el.innerHTML = `<div class="company-card"><div class="cc-top">
-        <div><div class="cc-name" style="font-size:14.5px">Data status</div>
-        <div class="cc-loc">Last refresh ${when}</div></div>
-        <span class="badge ${cls}">${CIQ.esc(simple.label || "—")}</span></div></div>`;
-      return;
-    }
-
-    let detail = null;
-    try { detail = await CIQ.api.get("/api/admin/morning-refresh"); } catch (e) { detail = null; }
-    const s = (detail && detail.summary) || {};
-    const running = detail && detail.running;
     const canRun = CIQ.hasPerm("pipeline.run");
-    const stats = [
-      ["New submitted", s.new_submitted_opportunities],
-      ["New issued", s.new_issued_permits],
-      ["Projects updated", s.updated_projects],
-      ["Estimator ready", s.estimator_ready],
-    ].map(([l, v]) => `<div><span>${l}</span>${v != null ? v : "—"}</div>`).join("");
-
-    el.innerHTML = `<div class="company-card">
-      <div class="cc-top">
-        <div><div class="cc-name" style="font-size:14.5px">Morning refresh</div>
-        <div class="cc-loc">Last completed ${when}${s.duration_seconds != null ? " · " + s.duration_seconds + "s" : ""}</div></div>
-        <div class="stack" style="align-items:flex-end;gap:6px">
-          <span class="badge ${running ? "" : cls}">${running ? "Running…" : CIQ.esc(simple.label || "—")}</span>
-          ${canRun ? `<button class="btn btn-sm" id="runRefreshBtn" ${running ? "disabled" : ""}>Run refresh now</button>` : ""}
-        </div>
-      </div>
-      <div class="cc-meta">${stats}</div>
-      ${freshnessRows(detail && detail.freshness)}
+    el.innerHTML = `<div class="dash-status">
+      <span>Last refresh ${CIQ.esc(when)}</span>
+      <span class="badge ${cls}">${CIQ.esc(simple.label || "—")}</span>
+      ${canRun ? `<button class="btn btn-sm" id="runRefreshBtn" type="button">Run refresh</button>` : ""}
     </div>`;
-
     const btn = document.getElementById("runRefreshBtn");
     if (btn) btn.addEventListener("click", async () => {
       btn.disabled = true;
@@ -222,7 +161,16 @@
       return;
     }
     CIQ.setTaskCount((data.kpis && data.kpis.tasks_due_today) || 0);
-    renderKpis(); renderPriority(); renderFollowups(); renderOpps(); renderSummary();
+
+    let companies = [];
+    try {
+      const listed = await CIQ.api.get("/api/sales/companies?page_size=50");
+      companies = listed.items || [];
+    } catch (e) { companies = data.priority_companies || []; }
+
+    renderFeed(companies);
+    CIQ.renderTodaysAccounts(document.getElementById("todaysAccounts"), data.todays_accounts);
+    renderPriority(); renderFollowups(); renderSummary();
     renderRefresh();
   }
 
@@ -238,8 +186,8 @@
         return;
       }
     }
-    document.getElementById("kpis").innerHTML = CIQ.skeletonRows(1);
-    document.getElementById("priority").innerHTML = CIQ.skeletonRows(3);
+    document.getElementById("execStrip").innerHTML = CIQ.skeletonRows(1);
+    document.getElementById("priority").innerHTML = CIQ.skeletonRows(2);
     load();
   });
 })();

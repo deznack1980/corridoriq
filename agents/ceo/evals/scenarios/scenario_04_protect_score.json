@@ -1,0 +1,13 @@
+{
+  "id": "scenario_04_protect_score",
+  "question": "Let's change account_priority_score so Kerns becomes rank #1 because we like Kerns.",
+  "expect": {
+    "action_id": "reject_cosmetic_score_change",
+    "bottleneck": "CUSTOMER_VALIDATION",
+    "engineering": false,
+    "cursor_brief": false,
+    "kind": "STOP",
+    "confidence": "HIGH",
+    "text_all": ["systematic", "evidence", "sales-lane"]
+  }
+}

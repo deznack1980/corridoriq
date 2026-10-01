@@ -13,18 +13,144 @@ from datetime import datetime, timedelta, timezone
 from pipeline.config import settings
 from pipeline.connectors.base import ConnectorNotConfiguredError, utcnow_iso
 from pipeline.connectors.registry import build_connector
+from pipeline.ingestion import raw_capture
 from pipeline.ingestion.upsert import upsert_permit
 
 DEFAULT_FIRST_RUN_LOOKBACK_DAYS = 730  # ~2 years
 
 
+class _RawBatch:
+    """RAW capture for one jurisdiction's ingest, as a context manager.
+
+    RAW capture must never be able to break ingestion: it is an observability
+    layer, not a dependency. Any failure degrades to a no-op and ingestion
+    continues, because losing a day of permits is worse than losing a day of
+    raw versions.
+    """
+
+    def __init__(self, conn, slug, connector_type, since):
+        self.conn = conn
+        self.slug = slug
+        self.connector_type = connector_type
+        self.since = since
+        self.batch_id = None
+        self.new = self.changed = self.unchanged = 0
+
+    def __enter__(self):
+        if not settings.RAW_CAPTURE_ENABLED:
+            return self
+        try:
+            endpoint = self.conn.execute(
+                "SELECT endpoint_url FROM jurisdictions WHERE slug = ?", (self.slug,)
+            ).fetchone()
+            self.batch_id = raw_capture.open_batch(
+                self.conn,
+                source_system=self.slug,
+                source_entity_type=settings.RAW_ENTITY_PERMIT,
+                connector_type=self.connector_type,
+                source_url=endpoint["endpoint_url"] if endpoint else None,
+                requested_since=self.since.isoformat() if self.since else None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{self.slug}] RAW capture unavailable: {exc}")
+            self.batch_id = None
+        return self
+
+    def record(self, mapped: dict) -> None:
+        if self.batch_id is None:
+            return
+        try:
+            outcome = raw_capture.capture_permit(self.conn, self.batch_id, mapped)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{self.slug}] RAW capture skipped a record: {exc}")
+            return
+        if outcome == raw_capture.NEW:
+            self.new += 1
+        elif outcome == raw_capture.CHANGED:
+            self.changed += 1
+        else:
+            self.unchanged += 1
+
+    def close(self, *, fetched: int, status: str = "succeeded",
+              error_message: str | None = None) -> None:
+        if self.batch_id is None:
+            return
+        try:
+            raw_capture.close_batch(
+                self.conn, self.batch_id, status=status, fetched=fetched,
+                new=self.new, changed=self.changed, unchanged=self.unchanged,
+                error_message=error_message,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{self.slug}] RAW batch close failed: {exc}")
+        finally:
+            self.batch_id = None
+
+    def __exit__(self, exc_type, exc, tb):
+        # Only fires when close() was not reached (an unexpected error path).
+        if self.batch_id is not None:
+            self.close(fetched=0, status="failed",
+                       error_message=str(exc) if exc else "batch not closed")
+        return False
+
+
 def _parse_since(last_synced_at: str | None) -> datetime:
+    """First-run fallback only: used when we hold no records for a source."""
     if last_synced_at:
         return datetime.fromisoformat(last_synced_at)
     return datetime.now(timezone.utc) - timedelta(days=DEFAULT_FIRST_RUN_LOOKBACK_DAYS)
 
 
-def run_ingestion(conn: sqlite3.Connection) -> None:
+def _held_watermark(conn: sqlite3.Connection, slug: str) -> datetime | None:
+    """Newest source-assigned date we already hold for a jurisdiction."""
+    row = conn.execute(
+        "SELECT MAX(COALESCE(issued_date, filed_date)) AS mx "
+        "FROM permits WHERE jurisdiction = ?",
+        (slug,),
+    ).fetchone()
+    value = row["mx"] if row else None
+    if not value:
+        return None
+    # Stored formats differ by source: plain 'YYYY-MM-DD' for most, full ISO
+    # timestamps for Mesa. Only the day matters here.
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def compute_since(
+    conn: sqlite3.Connection,
+    slug: str,
+    last_synced_at: str | None,
+    lookback_days: int | None = None,
+) -> datetime:
+    """Watermark for a source's incremental query.
+
+    Derived from the newest source date we already hold, minus a lookback --
+    NOT from when we last ran.
+
+    Connectors filter on the source's issue date, so a run-time watermark asks
+    "give me permits issued since I last ran". Sources publish late: a permit
+    issued on the 5th may not appear in the feed until the 14th. That record is
+    invisible to a run watermarked the 10th, and since the watermark only ever
+    advances, it can never be picked up again. The loss is permanent and
+    produces no error.
+    """
+    lookback = timedelta(days=settings.INGEST_WATERMARK_LOOKBACK_DAYS
+                         if lookback_days is None else lookback_days)
+    held = _held_watermark(conn, slug)
+    if held is not None:
+        return held - lookback
+    return _parse_since(last_synced_at)
+
+
+def run_ingestion(conn: sqlite3.Connection, lookback_days: int | None = None) -> None:
+    """Ingest every connected jurisdiction.
+
+    ``lookback_days`` widens the incremental watermark for a one-off catch-up;
+    it defaults to the standing window.
+    """
     connected = conn.execute(
         "SELECT slug, connector_type, last_synced_at FROM jurisdictions WHERE status = 'connected'"
     ).fetchall()
@@ -35,16 +161,23 @@ def run_ingestion(conn: sqlite3.Connection) -> None:
 
     for row in connected:
         slug = row["slug"]
-        since = _parse_since(row["last_synced_at"])
+        since = compute_since(conn, slug, row["last_synced_at"], lookback_days)
         run_started_at = utcnow_iso()
 
         print(f"[{slug}] ingesting since {since.isoformat()} ...")
+
+        telemetry = {
+            "connector_type": row["connector_type"],
+            "requested_since": since.isoformat() if since else None,
+        }
 
         try:
             connector = build_connector(slug, row["connector_type"])
         except ConnectorNotConfiguredError as exc:
             print(f"[{slug}] SKIPPED — {exc}")
-            _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc))
+            error_type, http_status = classify_error(exc)
+            _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc),
+                        error_type=error_type, http_status=http_status, **telemetry)
             continue
 
         # A connector failure (bad query, network error, source outage) must
@@ -59,20 +192,32 @@ def run_ingestion(conn: sqlite3.Connection) -> None:
                 ("error", str(exc), slug),
             )
             conn.commit()
-            _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc))
+            error_type, http_status = classify_error(exc)
+            _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc),
+                        error_type=error_type, http_status=http_status, **telemetry)
             continue
 
         inserted = updated = 0
-        for mapped in result.records:
-            outcome = upsert_permit(conn, mapped)
-            if outcome == "inserted":
-                inserted += 1
-            else:
-                updated += 1
-        conn.commit()
+        with _RawBatch(conn, slug, row["connector_type"], since) as raw_batch:
+            for mapped in result.records:
+                # RAW first: preserve what the source said before the permit
+                # row is overwritten in place.
+                raw_batch.record(mapped)
+                outcome = upsert_permit(conn, mapped)
+                if outcome == "inserted":
+                    inserted += 1
+                else:
+                    updated += 1
+            conn.commit()
 
-        status = "success" if not result.errors else "success_with_errors"
-        error_message = "; ".join(result.errors[:5]) if result.errors else None
+            status = "success" if not result.errors else "success_with_errors"
+            error_message = "; ".join(result.errors[:5]) if result.errors else None
+            raw_batch_id = raw_batch.batch_id
+            raw_batch.close(fetched=result.fetched_count,
+                            status="succeeded" if not result.errors else "partial",
+                            error_message=error_message)
+            raw_new, raw_changed = raw_batch.new, raw_batch.changed
+            raw_unchanged = raw_batch.unchanged
 
         conn.execute(
             """
@@ -85,25 +230,131 @@ def run_ingestion(conn: sqlite3.Connection) -> None:
         conn.commit()
 
         _record_run(
-            conn, slug, run_started_at, result.fetched_count, inserted, updated, status, error_message
+            conn, slug, run_started_at, result.fetched_count, inserted, updated,
+            status, error_message,
+            raw_batch_id=raw_batch_id,
+            source_rows=result.source_row_count,
+            duplicates_dropped=result.duplicates_dropped,
+            raw_new=raw_new, raw_changed=raw_changed, raw_unchanged=raw_unchanged,
+            **telemetry,
         )
 
+        dupes = (f" dupes_dropped={result.duplicates_dropped}"
+                 if result.duplicates_dropped else "")
         print(
             f"[{slug}] fetched={result.fetched_count} inserted={inserted} updated={updated} "
-            f"errors={len(result.errors)}"
+            f"errors={len(result.errors)} raw_new={raw_new} raw_changed={raw_changed}{dupes}"
         )
 
+    # Health is evaluated once per ingestion pass, after every source has been
+    # attempted, so a snapshot always reflects a complete round rather than a
+    # partial one. Guarded: telemetry observes, it never blocks.
+    from pipeline.telemetry.source_health import record_snapshot_safe
 
-def _record_run(conn, slug, run_started_at, fetched, inserted, updated, status, error_message):
-    conn.execute(
-        """
-        INSERT INTO ingestion_runs (jurisdiction_slug, run_started_at, run_finished_at,
-                                     records_fetched, records_inserted, records_updated,
-                                     status, error_message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (slug, run_started_at, utcnow_iso(), fetched, inserted, updated, status, error_message),
-    )
+    for health in record_snapshot_safe(conn):
+        if health["health_state"] not in ("healthy", "unknown"):
+            print(f"[health] {health['jurisdiction_slug']}: "
+                  f"{health['health_state'].upper()} - {health['detail']}")
+
+
+def classify_error(exc: Exception | None) -> tuple[str | None, int | None]:
+    """Reduce an exception to (error_type, http_status).
+
+    A stored string like "500 Server Error: ... for url: https://..." cannot be
+    grouped or counted. A short token can, which is what makes "this source
+    fails with 5xx once a week" a query rather than an investigation.
+    """
+    if exc is None:
+        return None, None
+    if isinstance(exc, ConnectorNotConfiguredError):
+        return "not_configured", None
+
+    status = None
+    try:
+        import requests
+    except Exception:  # pragma: no cover - connectors depend on it
+        requests = None
+
+    if requests is not None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+        if isinstance(exc, requests.exceptions.Timeout):
+            return "timeout", status
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return "connection", status
+        if isinstance(exc, requests.exceptions.HTTPError):
+            if status is None:
+                return "http_error", None
+            if status == 429:
+                return "rate_limited", status
+            if 500 <= status < 600:
+                return "http_5xx", status
+            if 400 <= status < 500:
+                return "http_4xx", status
+            return "http_error", status
+        if isinstance(exc, requests.exceptions.RequestException):
+            return "network", status
+
+    name = type(exc).__name__.lower()
+    for token, label in (("timeout", "timeout"), ("connection", "connection"),
+                         ("network", "network"), ("auth", "auth"),
+                         ("forbidden", "auth"), ("unauthorized", "auth"),
+                         ("invalid", "invalid_request"),
+                         ("badrequest", "invalid_request"),
+                         ("notconfigured", "not_configured")):
+        if token in name:
+            return label, status
+    return "unknown", status
+
+
+def _duration_ms(started_at: str, finished_at: str) -> int | None:
+    try:
+        start = datetime.fromisoformat(started_at)
+        end = datetime.fromisoformat(finished_at)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+    return int((end - start).total_seconds() * 1000)
+
+
+def _record_run(conn, slug, run_started_at, fetched, inserted, updated, status,
+                error_message, **telemetry):
+    """Append a row to ingestion_runs.
+
+    Telemetry is best-effort: a database missing the Phase 2 columns must not
+    stop ingestion from recording that the run happened at all.
+    """
+    finished_at = utcnow_iso()
+    columns = {
+        "jurisdiction_slug": slug,
+        "run_started_at": run_started_at,
+        "run_finished_at": finished_at,
+        "records_fetched": fetched,
+        "records_inserted": inserted,
+        "records_updated": updated,
+        "status": status,
+        "error_message": error_message,
+        "duration_ms": _duration_ms(run_started_at, finished_at),
+    }
+    columns.update({k: v for k, v in telemetry.items() if v is not None})
+
+    try:
+        names = ", ".join(columns)
+        placeholders = ", ".join("?" for _ in columns)
+        conn.execute(
+            f"INSERT INTO ingestion_runs ({names}) VALUES ({placeholders})",
+            tuple(columns.values()),
+        )
+    except sqlite3.OperationalError:
+        conn.execute(
+            """
+            INSERT INTO ingestion_runs (jurisdiction_slug, run_started_at, run_finished_at,
+                                         records_fetched, records_inserted, records_updated,
+                                         status, error_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (slug, run_started_at, finished_at, fetched, inserted, updated,
+             status, error_message),
+        )
     conn.commit()
 
 
@@ -192,6 +443,7 @@ def ingest_jurisdiction(
     attempts: int | None = None,
     backoff_base: float | None = None,
     backoff_max: float | None = None,
+    lookback_days: int | None = None,
     sleep=_time.sleep,
 ) -> dict:
     """Ingest a single jurisdiction with retry + failure isolation.
@@ -204,7 +456,7 @@ def ingest_jurisdiction(
     backoff_base = settings.MORNING_RETRY_BACKOFF_SECONDS if backoff_base is None else backoff_base
     backoff_max = settings.MORNING_RETRY_BACKOFF_MAX_SECONDS if backoff_max is None else backoff_max
 
-    since = _parse_since(last_synced_at)
+    since = compute_since(conn, slug, last_synced_at, lookback_days)
     run_started_at = utcnow_iso()
     stats = {
         "slug": slug,
@@ -216,6 +468,15 @@ def ingest_jurisdiction(
         "submitted_only": 0,
         "retries": 0,
         "error": None,
+        "raw_new": 0,
+        "raw_changed": 0,
+        "duplicates_dropped": 0,
+        "source_rows": 0,
+    }
+
+    telemetry = {
+        "connector_type": connector_type,
+        "requested_since": since.isoformat() if since else None,
     }
 
     try:
@@ -227,8 +488,11 @@ def ingest_jurisdiction(
             ("error", str(exc), slug),
         )
         conn.commit()
-        _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc))
+        error_type, http_status = classify_error(exc)
+        _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc),
+                    error_type=error_type, http_status=http_status, **telemetry)
         stats.update(_latest_source_dates(conn, slug))
+        stats["error_type"] = error_type
         return stats
 
     try:
@@ -243,23 +507,40 @@ def ingest_jurisdiction(
             ("error", str(exc), slug),
         )
         conn.commit()
-        _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc))
+        error_type, http_status = classify_error(exc)
+        # attempts - 1 is the retry budget; an exhausted budget means every
+        # retry was spent, which is worth recording separately from the error.
+        _record_run(conn, slug, run_started_at, 0, 0, 0, "error", str(exc),
+                    error_type=error_type, http_status=http_status,
+                    retries=attempts - 1 if error_type != "not_configured" else 0,
+                    **telemetry)
         stats.update(_latest_source_dates(conn, slug))
+        stats["error_type"] = error_type
         return stats
 
     inserted = updated = unchanged = 0
-    for mapped in result.records:
-        outcome = upsert_permit(conn, mapped, detect_unchanged=True)
-        if outcome == "inserted":
-            inserted += 1
-        elif outcome == "updated":
-            updated += 1
-        else:
-            unchanged += 1
-    conn.commit()
+    with _RawBatch(conn, slug, connector_type, since) as raw_batch:
+        for mapped in result.records:
+            # RAW first: preserve what the source said before the permit row
+            # is overwritten in place.
+            raw_batch.record(mapped)
+            outcome = upsert_permit(conn, mapped, detect_unchanged=True)
+            if outcome == "inserted":
+                inserted += 1
+            elif outcome == "updated":
+                updated += 1
+            else:
+                unchanged += 1
+        conn.commit()
 
-    status = "success" if not result.errors else "success_with_errors"
-    error_message = "; ".join(result.errors[:5]) if result.errors else None
+        status = "success" if not result.errors else "success_with_errors"
+        error_message = "; ".join(result.errors[:5]) if result.errors else None
+        raw_batch_id = raw_batch.batch_id
+        raw_batch.close(fetched=result.fetched_count,
+                        status="succeeded" if not result.errors else "partial",
+                        error_message=error_message)
+        raw_new, raw_changed = raw_batch.new, raw_batch.changed
+        raw_unchanged = raw_batch.unchanged
 
     conn.execute(
         """
@@ -271,7 +552,13 @@ def ingest_jurisdiction(
     )
     conn.commit()
     _record_run(conn, slug, run_started_at, result.fetched_count, inserted, updated,
-                status, error_message)
+                status, error_message,
+                raw_batch_id=raw_batch_id,
+                source_rows=result.source_row_count,
+                duplicates_dropped=result.duplicates_dropped,
+                records_unchanged=unchanged, retries=retries,
+                raw_new=raw_new, raw_changed=raw_changed, raw_unchanged=raw_unchanged,
+                **telemetry)
 
     stats.update({
         "status": status,
@@ -281,6 +568,10 @@ def ingest_jurisdiction(
         "unchanged": unchanged,
         "retries": retries,
         "error": error_message,
+        "raw_new": raw_new,
+        "raw_changed": raw_changed,
+        "duplicates_dropped": result.duplicates_dropped,
+        "source_rows": result.source_row_count,
     })
     stats.update(_latest_source_dates(conn, slug))
     return stats
