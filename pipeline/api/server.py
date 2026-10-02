@@ -89,6 +89,10 @@ _PORTAL_PAGES = {
     "portal.css",
 }
 
+# Contractor pilot referral entry: /join/<public referral code>.
+_JOIN_RE = re.compile(r"^/join/[a-z0-9-]{4,40}/?$")
+_JOIN_PAGE = "contractor-join.html"
+
 _ID = r"(\d+)"
 _SALES_COMPANY_RE = re.compile(
     rf"^/api/sales/companies/{_ID}(?:/(projects|permits|activities|relationship))?$")
@@ -170,7 +174,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     # ---- response helpers -------------------------------------------------
     def _json(self, code: int, payload, *, set_cookie: str | None = None,
-              clear_cookie: bool = False):
+              clear_cookie: bool = False, raw_cookie: str | None = None):
         body = json.dumps(payload, default=str).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -182,6 +186,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         if clear_cookie:
             self.send_header("Set-Cookie",
                              f"{COOKIE}=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax")
+        if raw_cookie is not None:
+            self.send_header("Set-Cookie", raw_cookie)
         self.end_headers()
         self.wfile.write(body)
 
@@ -206,7 +212,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         return "; ".join(parts)
 
     # ---- request helpers --------------------------------------------------
-    def _token(self) -> str | None:
+    def _token(self, name: str = COOKIE) -> str | None:
         raw = self.headers.get("Cookie")
         if not raw:
             return None
@@ -215,8 +221,16 @@ class ApiHandler(BaseHTTPRequestHandler):
             jar.load(raw)
         except Exception:
             return None
-        morsel = jar.get(COOKIE)
+        morsel = jar.get(name)
         return morsel.value if morsel else None
+
+    def _pilot_token(self) -> str | None:
+        from pipeline.pilot.platform import PILOT_COOKIE
+        return self._token(PILOT_COOKIE)
+
+    def _is_json(self) -> bool:
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        return ctype == "application/json"
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -278,10 +292,19 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         if not path.startswith("/api/"):
+            # Supplier referral links (/join/<code>) open the contractor join
+            # page; the page reads the code from the URL.
+            if _JOIN_RE.match(path) and self._serve_static("/" + _JOIN_PAGE):
+                return
             if self._serve_static(path):
                 return
             return self._json(404, {"error": "not found"})
         query = self._flatten(parse_qs(parsed.query))
+        if path.startswith("/api/pilot/"):
+            # Contractor pilot: separate platform database; the intelligence
+            # database is never opened for these routes.
+            from pipeline.pilot import api as pilot_api
+            return pilot_api.handle(self, "GET", path, query, None)
         conn = _factory()
         try:
             self._route_get(conn, path, query)
@@ -304,6 +327,9 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _write_dispatch(self, method):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path.startswith("/api/pilot/"):
+            from pipeline.pilot import api as pilot_api
+            return pilot_api.handle(self, method, path, {}, self._body())
         conn = _factory()
         try:
             body = self._body()
