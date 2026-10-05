@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from agents.ceo.briefs.executive import render_executive
 from agents.ceo.decision_engine.priorities import _fmt_pct, account_names
 from agents.framework.provenance import is_known
 
@@ -73,8 +74,10 @@ def render_brief(decision) -> str:
     unknown = "\n".join(f"- {line}" for line in decision.unknowns) or "- None material."
     changed = "\n".join(f"- {line}" for line in decision.what_changed)
     sections = [
-        "CORRIDORIQ CEO BRIEF",
-        "INTERNAL ONLY. Not customer-safe output. v0.1 does not execute this recommendation.",
+        render_executive(decision).rstrip(),
+        "",
+        "DECISION DETAIL",
+        "INTERNAL ONLY. Not customer-safe output. v0.2 does not execute this recommendation.",
         "",
         "CURRENT STATE",
         bullets(decision.current_state),

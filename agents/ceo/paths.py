@@ -13,6 +13,14 @@ EVALS_DIR = PACKAGE_DIR / "evals"
 FIXTURE_DIR = EVALS_DIR / "fixtures"
 
 
+def state_dir() -> Path:
+    """Packaged company state. Override with CEO_STATE_DIR for another machine."""
+    override = os.environ.get("CEO_STATE_DIR")
+    if override:
+        return Path(override).expanduser()
+    return PACKAGE_DIR / "company"
+
+
 def reports_generated_dir() -> Path:
     return REPO_ROOT / "reports" / "generated"
 

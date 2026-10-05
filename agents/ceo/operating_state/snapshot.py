@@ -203,13 +203,13 @@ def build_snapshot(
             "pricing": unknown("no approved price is on file"),
             "pilot_status": _pilot_status(art),
             "product_a": metric(
-                "subscription intelligence for supply houses; current focus; not validated",
+                "supplier intelligence for supply houses; closest current path to revenue; not validated",
                 source="agents/ceo/knowledge/commercial_models.md",
                 category=INTERNAL_HYPOTHESIS,
                 confidence="MEDIUM",
             ),
             "product_b": metric(
-                "contractor demand / fulfillment engine; future hypothesis; not built",
+                "contractor procurement; EARLY_ACCESS typed material request in pilot code; marketplace not authorized",
                 source="agents/ceo/knowledge/commercial_models.md",
                 category=INTERNAL_HYPOTHESIS,
                 confidence="MEDIUM",
@@ -218,7 +218,7 @@ def build_snapshot(
                 True,
                 source="agents/ceo/knowledge/commercial_models.md",
                 category=INTERNAL_HYPOTHESIS,
-                note="Founder mandate 2026-09-29: do not blend Product A and Product B.",
+                note="Concepts stay distinct. Procurement connects them. Do not blend them into a marketplace.",
             ),
             "assume_marketplace": metric(
                 False,

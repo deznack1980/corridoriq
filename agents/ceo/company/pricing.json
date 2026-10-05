@@ -1,0 +1,19 @@
+{
+  "schema": "corridoriq.ceo.pricing.v1",
+  "updated_at": "2026-10-04T00:00:00Z",
+  "source": "founder assignment, CEO agent v0.2",
+  "reason": "Record internal pricing hypotheses. None of these are an approved or public price.",
+  "confidence": "MEDIUM",
+  "claim_class": "HYPOTHESIS",
+  "approved_public_price": null,
+  "transaction_fee_default": false,
+  "hypotheses": {
+    "founding_partner_pilot_usd_per_month": {"low": 500, "high": 750},
+    "preferred_sonoran_or_founding_partner_usd_per_month": 750,
+    "potential_standard_after_validation_usd_per_month": 1500,
+    "growth_or_multi_branch": "may eventually be higher; no figure selected"
+  },
+  "contractor_basic_access": "low-friction or free during network formation",
+  "contractor_pro": "HYPOTHESIS; not priced",
+  "publication": "forbidden without founder approval"
+}

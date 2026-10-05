@@ -1,0 +1,60 @@
+{
+  "schema": "corridoriq.ceo.kpis.v1",
+  "updated_at": "2026-10-04T00:00:00Z",
+  "source": "CEO agent v0.2 schema; no measurement was taken",
+  "reason": "Name the metrics the CEO must track. Leave every value UNKNOWN until a ledger or read-only query supplies it.",
+  "confidence": "HIGH",
+  "groups": {
+    "supplier_commercial": [
+      "supply_house_prospects",
+      "active_conversations",
+      "demos_scheduled",
+      "pilots_proposed",
+      "pilots_active",
+      "paid_suppliers",
+      "mrr",
+      "arr",
+      "conversion_rate",
+      "churn",
+      "expansion_revenue"
+    ],
+    "contractor_network": [
+      "contractor_signups",
+      "verified_contractors",
+      "activated_contractors",
+      "material_requests_created",
+      "material_requests_submitted",
+      "repeat_users",
+      "requests_per_contractor",
+      "participating_suppliers",
+      "supplier_response_rate"
+    ],
+    "intelligence": [
+      "active_project_coverage",
+      "entity_resolution_quality",
+      "trade_classification_quality",
+      "contactability",
+      "why_now_evidence_quality",
+      "supplier_account_matching_quality",
+      "customer_book_match_quality"
+    ],
+    "operations": [
+      "pipeline_health",
+      "latest_successful_refresh",
+      "backup_health",
+      "production_health",
+      "failed_scheduled_jobs",
+      "unresolved_high_severity_issues"
+    ],
+    "customer_development": [
+      "interviews_or_conversations",
+      "positive_signals",
+      "objections",
+      "pricing_conversations",
+      "pilot_commitments",
+      "validated_problems",
+      "validated_willingness_to_pay"
+    ]
+  },
+  "values": {}
+}

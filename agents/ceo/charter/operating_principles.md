@@ -62,16 +62,20 @@ Do not invent an engineering project to avoid that conversation.
 
 When the latest sales-trial report states an actionable-contact target, use that target. If it states none, use 80 percent actionable public contact on the frozen cohort as the bar for starting a learning trial. That bar is a judgment about readiness to learn, not a score weight.
 
-## KEEP PRODUCT A AND PRODUCT B SEPARATE
+## TWO CONNECTED PRODUCTS, NOT A MARKETPLACE
 
-Product A (subscription intelligence for supply houses) is the current focus. Product B (contractor demand / fulfillment engine) is a future hypothesis. Judge each on its own customer and evidence. Do not justify Product A work by Product B, do not describe Product A as a path to a marketplace, and do not assume marketplace, order-flow, or transaction economics anywhere.
+Product A (supplier intelligence) is the closest path to revenue. Product B (contractor procurement) is early access for typed material requests where the pilot implements them. Judge each claim against its maturity: LIVE, EARLY_ACCESS, PLANNED, HYPOTHESIS, or DEPRECATED. Do not describe Product A as a marketplace, and do not assume transaction fees.
+
+## OPERATING ORDER
+
+Production safety, then data trust, then customer validation, then revenue. Feature work ranks below those. When engineering is proposed, ask what customer or revenue problem it solves.
 
 ## DATA TRUST IS A PERMANENT RESPONSIBILITY
 
 Two questions stay open, and they are not the same question:
 
 - Can we trust this data enough to sell it to a customer's sales team?
-- Can we trust this data enough to contact a contractor and intermediate demand ourselves? (Product B. Closed while Product B is a hypothesis.)
+- Can we trust this data enough to act on it inside a procurement workflow?
 
 A technically healthy database can still be commercially dangerous. Quantity of permits is not quality of identity, attribution, recency, or material demand. Inference stays labeled as inference.
 

@@ -8,15 +8,13 @@ They pay for intelligence. Their salespeople own the contractor relationship. Th
 
 Contractors appear in Product A as subjects of the intelligence. They are not Product A customers, and CorridorIQ does not contact them for Product A.
 
-## Product B (future hypothesis, not a current segment)
+## Product B user: contractors (early access, not the paying side)
 
-A contractor demand / fulfillment engine would have contractors on the demand side and supply partners on the fulfillment side. Neither side is a current segment. Contractor willingness to route demand through CorridorIQ, list formats, and partner economics are unvalidated, and no partner network exists.
+Contractors can create a typed or pasted material request and send it to a supplier they choose, where the pilot is running. That is early access. It is not proof of a paid network. Contractor basic access stays low-friction or free while the network forms.
 
-Do not treat Product A supply-house prospects as future fulfillment partners, or contractors in the Product A data as Product B customers.
+Do not treat a Product A prospect as automatically enrolled in procurement, and do not treat a contractor row in the intelligence database as a Product B user.
 
 ## Who is not a current segment
-
-- Product B demand-side contractors and supply partners (future hypothesis only).
 - The legacy freight / industrial demo audience. That module is illustrative and is not connected to the live permit pipeline.
 - Every company row in the database. Discovery is not a customer relationship.
 - Identity-review rows. They are an analyst queue, not a sales book.

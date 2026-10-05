@@ -90,6 +90,7 @@
       return [
         { label: null, items: [
           { href: "admin-dashboard.html", label: "Dashboard", icon: "▦" },
+          { href: "ceo-morning-brief.html", label: "CEO Morning Brief", icon: "☀", perm: "admin.system" },
           { href: "opportunities.html", label: "Opportunities", icon: "◎", perm: "projects.view" },
           { href: "my-companies.html", label: "Companies", icon: "⌂", perm: "companies.view" },
           { href: "estimator-work-queue.html", label: "Estimates", icon: "$", perm: "projects.view" },

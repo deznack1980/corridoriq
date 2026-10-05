@@ -1,59 +1,65 @@
 # Commercial models
 
-Founder mandate, 2026-09-29. This supersedes the 2026-09-24 "parallel lanes" framing.
+Founder mandate, 2026-10-04. This supersedes the 2026-09-29 statement that Product B is not being built.
 
-CorridorIQ has two products. They are separate concepts with separate customers, value, economics, trust bars, and success measures. Do not blend them.
+CorridorIQ has two connected products. They stay distinct. Procurement connects them. Do not blend them into a marketplace, and do not assume transaction fees.
 
-- Product A is the current commercial focus: subscription intelligence for supply houses.
-- Product B is a future hypothesis: a contractor demand and fulfillment engine. It is not built, not being built, and not assumed.
+- Product A, supplier intelligence, is the closest product to revenue.
+- Product B, contractor procurement, is the network-growth product. Typed or pasted material requests are early access where the pilot code implements them. Inventory, account pricing, automated quoting, payments, and a multi-supplier marketplace are planned, not live.
 
-This is a strategy statement. It does not authorize building either product.
+This file does not authorize a deployment, a price, or a customer contact.
 
-## Product A — subscription intelligence for supply houses (current focus)
+## Product A — supplier intelligence
 
-Customer: supply houses and distributors. The first wedge is Phoenix plumbing / PVF and adjacent wet-side sales teams. Manufacturers and other construction sellers are possible later buyers, not the current focus.
+Customer: plumbing supply houses, independent distributors, regional distributors, and later other construction-material suppliers.
 
-What the customer buys: intelligence their own salespeople act on. Which contractor accounts to work, what project activity is happening, why now, trade relevance, identity confidence, contactability, and a recommended human action, with evidence and visible uncertainty.
+What the customer buys: where construction demand is forming, which contractors are involved, which existing accounts are active around that demand, which accounts may be dormant, and which potential customers deserve sales attention.
 
-Who owns the contractor relationship: the supply house. Their rep calls, qualifies, quotes, sells, and fulfills. CorridorIQ does not contact contractors, route orders, or sit in the transaction.
+Pipeline, internal only: source data, normalization, entity resolution, project and permit intelligence, contractor and company, trade, customer relevance, account priority, sales-lane fit, contactability, why now, likely material demand, supplier sales intelligence.
 
-Economics: recurring subscription. Territory, seat, account, or tier structure is not selected. No price is approved.
+External language stays approximate: "multiple public, commercial and proprietary data signals." Do not publish scoring formulas or source mechanics.
 
-Success measure: whether CorridorIQ repeatedly causes a supply-house salesperson to take a commercially valuable action earlier, more accurately, or with less research than they otherwise would. Measured with logged outcomes, then renewal.
+Who owns the contractor relationship for this product: the supplier's sales organization.
 
-Trust bar: a salesperson can qualify before acting. Uncertainty is acceptable when it is visible, evidence is traceable, identity confidence is known, stale information is marked, and inference is not presented as fact.
+Economics: suppliers pay for intelligence. Internal hypotheses live in `company/pricing.json`. No public price is approved.
 
-## Product B — contractor demand / fulfillment engine (future hypothesis)
+Trust bar: a salesperson can qualify before acting when uncertainty is visible and inference is labeled.
 
-The idea: CorridorIQ captures contractor demand (for example a material request or supply list) and helps get it fulfilled through supply partners. CorridorIQ would hold more of the contractor relationship.
+## Product B — contractor procurement
 
-Status: hypothesis only. There is no validated contractor demand, no partner, no workflow, no pricing, and no transaction model. Candidate economics (referral, transaction fee, revenue share, margin) are listed only so they are not confused with Product A economics.
+Initial workflow: contractor, CorridorIQ, material request or BOM, participating supplier receives the request.
 
-Trust bar: higher than Product A. Acting directly on a wrong company, person, trade, project, or material assumption costs a contractor relationship and the brand.
+Current early access, evidenced in `pipeline/pilot/materials.py` and `docs/operations/contractor_pilot.md`: a contractor can type or paste lines, the system can structure the request, and a participating supplier can receive, open, and acknowledge it when the pilot is actually running.
 
-What would reopen it: field evidence from real contractors or supply partners, logged as outcomes. Internal enthusiasm, a readiness label, or a Product A dataset does not count.
+Not live unless a later evidence record says so: photo-to-BOM, PDF ingestion, spreadsheet ingestion, live inventory, account-specific pricing, automated quoting, quote comparison, payments, checkout, a multi-supplier marketplace, automated compatibility guarantees.
 
-## Keeping them separate
+Contractor basic access stays low-friction or free during network formation. Contractor Pro is a hypothesis.
 
-- Product A work is judged only against Product A's customer and success measure. Do not justify Product A work by what it might enable for Product B.
-- Do not describe Product A as a step toward a marketplace, a funnel for fulfillment, or a demand-capture channel.
-- Do not treat supply-house subscribers as future fulfillment partners, or contractors in the Product A data as Product B customers.
-- Do not assume a marketplace, two-sided network, transaction revenue, or order flow in any plan, brief, or estimate.
-- Product A outputs contain no Product B features: no ordering, quoting, routing, partner selection, or contractor outreach by CorridorIQ.
-- A question that mixes the two gets split into two questions, and each is answered on its own evidence.
+Trust bar: higher than Product A wherever CorridorIQ acts in the workflow. Supplier systems stay authoritative for price, inventory, and availability. AI must not fabricate those.
 
-## What is shared
+## Network
 
-The data engine is shared infrastructure: source data, normalization, entity resolution, permit and project intelligence, contractor intelligence, trade classification, relevance, account priority, sales-lane fit, contactability, why-now. Sharing infrastructure is an engineering fact. It is not a product decision and does not blend the products. Do not fork the data architecture for either product, and do not add Product B structures to it before Product B is authorized.
+Supplier intelligence recruits supply houses. Participation and invitations bring contractors. Material demand flows to participating suppliers. Those procurement signals make the intelligence more valuable.
 
-## Data trust
+Lane A, existing customer revenue: make the supplier easier to buy from.
+Lane B, new demand: help the supplier find business it does not already have.
 
-Technically valid rows are not the same as commercially trustworthy intelligence. The Product A question is: can a supply-house rep trust this enough to act? The Product B question (can CorridorIQ act on a contractor directly?) stays closed while Product B is a hypothesis.
+Positioning: protect and streamline the business you already have while helping you find business you don't have yet.
 
-FACT product_a: subscription intelligence for supply houses; current commercial focus; not validated; pricing not selected
-FACT product_b: contractor demand / fulfillment engine; future hypothesis; not built; not being built
+## Keeping them distinct
+
+- Do not justify a marketplace build as the next step of Product A.
+- Do not describe early-access requests as live inventory or live pricing.
+- Do not treat a positive sales conversation as contracted revenue.
+- A question that asks to build the marketplace is still a marketplace question, and it is not authorized by the existence of the typed-request pilot.
+
+FACT product_a: supplier intelligence for supply houses; closest current path to revenue; not validated; no approved public price
+FACT product_b: contractor procurement; EARLY_ACCESS typed material request in pilot code; marketplace inventory pricing quoting and payments are PLANNED
 FACT products_are_separate: true
+FACT products_are_connected: true
 FACT blend_products: false
 FACT assume_marketplace: false
-FACT product_b_authorized: false
+FACT product_b_marketplace_authorized: false
+FACT transaction_fee_default: false
 FACT shared_data_engine: true
+FACT pricing_is_internal_hypothesis: true

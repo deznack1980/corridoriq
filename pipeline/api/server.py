@@ -78,6 +78,7 @@ _PORTAL_PAGES = {
     "user-management.js",
     # Role-aware dashboards.
     "admin-dashboard.html", "admin-dashboard.js",
+    "ceo-morning-brief.html", "ceo-morning-brief.js",
     "estimator-work-queue.html", "estimator-work-queue.js",
     "readonly-dashboard.html", "readonly-dashboard.js",
     # Sprint 6 — product pricing pages.
@@ -397,6 +398,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             from pipeline.auth.rbac import require_permission
             require_permission(user, "pipeline.monitor")
             return self._json(200, pipeline_runs.admin_status(conn))
+        if path == "/api/admin/ceo-morning-brief":
+            from pipeline.auth.rbac import require_permission
+            from agents.ceo.analytics.serve import load_owner_brief_view
+            from agents.ceo.paths import output_dir
+            require_permission(user, "admin.system")
+            return self._json(200, load_owner_brief_view(
+                reports_conn=conn, directory=output_dir() / "intelligence"))
 
         # --- reports ---
         if path == "/api/reports/catalog":

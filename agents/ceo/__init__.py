@@ -1,3 +1,3 @@
-"""CorridorIQ CEO agent v0.1. Read-only decision support."""
+"""CorridorIQ CEO agent v0.2. Read-only executive operating layer."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -50,11 +50,15 @@ Arizona ROC license data is an identity-validation layer. Ranking consumption st
 
 ## Products
 
-Everything above is shared data infrastructure. Product A (subscription intelligence for supply houses) is the current product built on it. Product B (contractor demand / fulfillment engine) is a future hypothesis. See `commercial_models.md`.
+Everything above is shared data infrastructure for supplier intelligence. Contractor procurement keeps its own pilot store under `CORRIDORIQ_PILOT_ROOT` and does not write the intelligence database. See `commercial_models.md`.
 
-## Fulfillment
+## Contractor procurement
 
-Product B. Not built and not being built. A readiness label inside an internal audit is not a fulfillment product, and no Product A feature is a step toward one.
+Early access for typed or pasted material requests, structuring, and supplier receive/open/acknowledge in the pilot code. Photo-to-BOM, live inventory, account pricing, quoting, payments, and a marketplace are planned. Supplier systems remain authoritative for price, inventory, and availability.
+
+## Fulfillment marketplace
+
+Not authorized. A typed request sent to one chosen supplier is not a marketplace. A readiness label inside an internal audit is not a product.
 
 ## Customer dashboard
 

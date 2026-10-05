@@ -1,0 +1,40 @@
+{
+  "schema": "corridoriq.ceo.maturity.v1",
+  "updated_at": "2026-10-04T00:00:00Z",
+  "source": "repository evidence plus founder assignment 2026-10-04",
+  "reason": "Classify capabilities so sales language cannot outrun the code.",
+  "confidence": "HIGH",
+  "allowed": ["LIVE", "EARLY_ACCESS", "PLANNED", "HYPOTHESIS", "DEPRECATED"],
+  "capabilities": {
+    "supplier_intelligence": {
+      "status": "LIVE",
+      "evidence": "Permit pipeline, entity and trade layers, sales lanes, and supplier-facing intelligence exist in the product codebase.",
+      "public_note": "Launch-stage in the product. Public production cutover is a separate fact and is not confirmed."
+    },
+    "contractor_material_request_text": {
+      "status": "EARLY_ACCESS",
+      "evidence": "pipeline/pilot/materials.py stores typed lines, structures a request, and send/inbox/acknowledge exist in the pilot. docs/operations/contractor_pilot.md. Not enabled unless CORRIDORIQ_PILOT_ROOT is set.",
+      "includes": ["type or paste lines", "structure a request", "supplier receive/open/acknowledge where the pilot is running"]
+    },
+    "photo_to_bom": {"status": "PLANNED", "evidence": "No production photo-to-BOM path is treated as live."},
+    "pdf_ingestion": {"status": "PLANNED", "evidence": "Not in the pilot's implemented scope."},
+    "spreadsheet_ingestion": {"status": "PLANNED", "evidence": "Not in the pilot's implemented scope."},
+    "live_inventory": {"status": "PLANNED", "evidence": "Supplier systems remain authoritative. No participating inventory integration is live."},
+    "account_specific_pricing": {"status": "PLANNED", "evidence": "No authorized contractor account-pricing integration is live."},
+    "automated_quoting": {"status": "PLANNED", "evidence": "contractor_pilot.md excludes quoting."},
+    "quote_comparison": {"status": "PLANNED", "evidence": "Not implemented as a live marketplace feature."},
+    "payments": {"status": "PLANNED", "evidence": "contractor_pilot.md excludes payments."},
+    "checkout": {"status": "PLANNED", "evidence": "Not implemented."},
+    "multi_supplier_marketplace": {"status": "PLANNED", "evidence": "A contractor sends to a chosen supplier. That is not a marketplace."},
+    "automated_compatibility": {"status": "PLANNED", "evidence": "Compatibility must not be fabricated."},
+    "voice_to_bom": {"status": "PLANNED", "evidence": "Roadmap only."},
+    "contractor_pro": {"status": "HYPOTHESIS", "evidence": "Possible future paid productivity tier. Not a current product."},
+    "public_production_launch": {
+      "status": "PLANNED",
+      "evidence": "Landing commit b2a532a is launch-ready website work. DNS cutover and public smoke test are not confirmed."
+    }
+  },
+  "ai_may_assist": ["classification", "ocr", "candidate generation", "specification extraction"],
+  "ai_must_not_fabricate": ["inventory", "price", "availability", "compatibility", "supplier authorization"],
+  "supplier_authoritative_for": ["PRICE", "INVENTORY", "AVAILABILITY"]
+}
