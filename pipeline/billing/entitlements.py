@@ -29,8 +29,13 @@ from pipeline.billing.states import PAID_ACCESS_STATES, BillingState
 
 log = logging.getLogger(__name__)
 
-__all__ = ["SUPPLIER_INTELLIGENCE", "CONTRACTOR_PRO_ENTITLEMENT", "PLAN_ENTITLEMENTS", "has_paid_access",
-           "supplier_has_paid_access", "contractor_has_pro", "entitlements_for", "request_priority"]
+__all__ = ["SUPPLIER_INTELLIGENCE", "CONTRACTOR_PRO_ENTITLEMENT", "PLAN_ENTITLEMENTS", "PRIORITY", "STANDARD",
+           "has_paid_access", "supplier_has_paid_access", "contractor_has_pro", "entitlements_for",
+           "request_priority"]
+
+# Material-request priority classes (the request_priority() contract).
+PRIORITY = "priority"
+STANDARD = "standard"
 
 # Every entitlement any plan can grant.
 PLAN_ENTITLEMENTS = frozenset(p.entitlement for p in PLANS.values())
@@ -97,7 +102,14 @@ def entitlements_for(conn, organization_id, config=None) -> frozenset[str]:
 
 
 def request_priority(conn, organization_id, config=None) -> str:
-    """Integration point for contractor material requests: 'priority' for an
-    active Contractor Pro organization, otherwise 'standard'. A classification
-    only: it carries no response-time or service-level commitment."""
-    return "priority" if contractor_has_pro(conn, organization_id, config) else "standard"
+    """THE integration contract for contractor material requests.
+
+    Returns PRIORITY only for a contractor organization whose Contractor Pro
+    subscription is verified paid (contractor_has_pro); every other case —
+    free, checkout pending, incomplete, past_due (no grace period), unpaid,
+    canceled, supplier organizations, unknown/misconfigured state — is
+    STANDARD. The only input is the organization ID, which callers must take
+    from the authenticated session; no request field, flag or plan name can
+    influence it. A classification only: no response-time or service-level
+    commitment of any kind."""
+    return PRIORITY if contractor_has_pro(conn, organization_id, config) else STANDARD

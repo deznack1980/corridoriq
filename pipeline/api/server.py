@@ -17,6 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from pipeline.auth.rbac import AuthzError
+from pipeline.billing import contractor_accounts
+from pipeline.billing import health as billing_health
 from pipeline.billing import service as billing
 from pipeline.billing.config import billing_enabled, load_config as load_billing_config
 from pipeline.billing.gateway import default_gateway as default_billing_gateway
@@ -98,7 +100,7 @@ _PORTAL_PAGES = {
 
 # Supplier billing (Stripe). Off unless CORRIDORIQ_BILLING_ENABLED=1; while
 # off, the billing page and every /api/billing route answer 404.
-_BILLING_PAGES = {"billing.html", "billing.js"}
+_BILLING_PAGES = {"billing.html", "billing.js", "contractor-accounts.html", "contractor-accounts.js"}
 _BILLING_PREFIX = "/api/billing/"
 _BILLING_WEBHOOK = "/api/billing/stripe/webhook"
 _BILLING_MAX_ACTION_BODY = 16 * 1024
@@ -454,6 +456,20 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/admin/users":
             return self._json(200, {"items": crm_admin.list_users(conn, user)})
 
+        # --- billing health / operator incidents (read-only, local state only) ---
+        if path == "/api/admin/billing/health":
+            from pipeline.auth.rbac import require_permission
+            require_permission(user, "pipeline.monitor")
+            return self._json(200, billing_health.billing_health(conn, load_billing_config()))
+        if path == "/api/admin/billing/incidents":
+            contractor_accounts._require_operator(conn, user)
+            return self._json(200, {"items": billing_health.billing_incidents(conn)})
+        if path == "/api/admin/contractor-accounts":
+            if not billing_enabled():
+                return self._json(404, {"error": "unknown route"})
+            return self._json(200, {"items": contractor_accounts.list_contractor_accounts(
+                conn, user, load_billing_config())})
+
         # --- data pipeline / morning refresh status ---
         if path == "/api/status/refresh":
             # Simple, non-technical status for every authenticated user.
@@ -555,6 +571,16 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._json(202, {"ok": True, "message": "Morning refresh started."})
         if method == "POST" and path == "/api/admin/users":
             return self._json(201, crm_admin.create_user(conn, user, body, ip=ip, ua=ua))
+        if method == "POST" and path == "/api/admin/contractor-accounts":
+            if not billing_enabled():
+                return self._json(404, {"error": "unknown route"})
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                return self._json(415, {"error": "unsupported media type"})
+            try:
+                return self._json(201, contractor_accounts.create_contractor_account(conn, user, body, ip=ip, ua=ua))
+            except contractor_accounts.ContractorAccountError as exc:
+                return self._json(400, {"error": "invalid contractor account details", "fields": exc.errors})
         m = _ADMIN_USER_RE.match(path)
         if m and method == "PATCH":
             return self._json(200, crm_admin.update_user(conn, user, int(m.group(1)), body, ip=ip, ua=ua))

@@ -343,3 +343,126 @@ python -m pipeline.billing verify-price --allow-live # read-only GET, live keys
 5. Update public pages (`for-contractors.html` still says Contractor Pro
    pricing is not set and lists planned features) only with separately
    approved copy.
+
+## v0.2 — integration contracts (Contractor Pro hardening)
+
+### Priority Requests: `request_priority()` is the contract
+
+`pipeline.billing.entitlements.request_priority(conn, organization_id)` returns
+`"priority"` (`PRIORITY`) only when `contractor_has_pro()` is true — a contractor
+organization whose Contractor Pro subscription is verified paid — and
+`"standard"` (`STANDARD`) in every other case: no subscription, checkout pending,
+incomplete / failed first payment, 3-D Secure pending, **past_due (no grace
+period: `PAID_ACCESS_STATES` = active, trialing)**, unpaid, paused, canceled,
+supplier organizations, wrong-plan payments, misconfiguration or any error.
+
+This branch has **no material-request system** (the contractor request flow
+lives in the unmerged pilot branch; `contractor-rfq*` pages here are front-end
+samples). The integration branch must:
+
+1. Take `organization_id` from the authenticated session only, never from the
+   request body, query string or headers.
+2. Call `request_priority(conn, organization_id)` when a request is **created**
+   and store the result on the request row (e.g. `priority TEXT NOT NULL
+   CHECK (priority IN ('priority','standard'))`), so later billing changes do
+   not silently reclassify history.
+3. Ignore any client-supplied `priority`, `plan`, `entitlement`, `account_type`
+   or price field.
+4. Use only "Priority Request" / "priority routing" language: no response-time,
+   quote, inventory, pricing or fulfilment guarantee.
+5. Read-only display: `GET /api/billing/status` includes `request_priority`
+   (contractors; `null` for suppliers) and `priority_requests` (bool).
+
+### Contractor account provisioning
+
+`POST /api/admin/contractor-accounts` (and `contractor-accounts.html`) — CorridorIQ
+operators only (`admin.system` **and** a member of CorridorIQ's own organization);
+`GET` lists contractor accounts with billing state and request priority. Both
+answer 404 unless billing is enabled; POST requires `Content-Type: application/json`.
+Creates, in one operation, an `organizations` row (`account_type='contractor'`),
+a `contractor_profiles` row and one `contractor_owner` user. The owner gets the
+existing admin-created-user credential flow: a random temporary password,
+stored only as a hash, returned once to the operator (never logged or emailed),
+and a forced password change at first sign-in. Account type, role, plan and
+permissions are fixed server-side; any such input is ignored.
+
+Gap (integration requirement): there is **no email verification, invitation
+link or self-service signup** in this branch. Do not bolt one onto this
+endpoint; build it in the integration branch on the contract below.
+
+### Signup data contract (`validate_contractor_signup`)
+
+| Field | Required | Rules |
+|---|---|---|
+| `contact_name` | yes | 2–120 chars, no control characters |
+| `email` | yes | normalized lower-case; unique across users |
+| `company_name` | yes | 2–160 chars |
+| `business_zip` | one of ZIP / address | `NNNNN` or `NNNNN-NNNN` |
+| `business_address` | one of ZIP / address | 5–200 chars |
+| `roc_license` | **no** (purchasers are often not the license holder) | letters/digits/hyphens, upper-cased |
+| `phone` | no | 10–15 digits after stripping formatting |
+
+A future public signup endpoint must reuse this validator and additionally
+provide: email ownership verification before activation (time-limited
+single-use token, stored hashed), rate limiting / bot protection, no account
+enumeration in responses, `must_change_password`-style first-login or
+passwordless set-up, and an audit event. Nothing else (SSN, EIN, licence
+documents, payment details) is collected.
+
+### Billing health contract (`pipeline/billing/health.py`, contract_version 1)
+
+`billing_health(conn)` → JSON-safe dict, local state only (`basis:
+"local_application_state"`): `status` ∈ `NOT_ENABLED | HEALTHY | WARNING |
+CRITICAL | UNKNOWN`, `enabled`, `mode`, `configuration` (problems as variable
+names / rules only, per-plan `price_configured` booleans, `webhook_secret_configured`),
+`webhooks` (last received / last applied timestamps, unresolved errors, oldest
+unresolved error, stuck-processing and 7-day rejection counts), `incidents`
+(30-day counts of wrong-plan payments, duplicate subscriptions, rejected events),
+`subscriptions_in_paid_state` (counts by account type) and `reasons`.
+
+| Status | Meaning |
+|---|---|
+| `NOT_ENABLED` | billing switched off — **not an error** (default outside a billing launch) |
+| `HEALTHY` | enabled, configured, no locally observed problem (says nothing about Stripe's own availability) |
+| `WARNING` | webhook failures awaiting Stripe retry, stuck or rejected events, or wrong-plan / duplicate subscriptions needing operator review |
+| `CRITICAL` | enabled but misconfigured, or a webhook failure older than Stripe's 3-day retry window |
+| `UNKNOWN` | billing tables unreadable |
+
+Never included: API keys, webhook secrets, Stripe customer/subscription/price
+IDs, payment details. It never calls Stripe. Surfaces:
+`GET /api/admin/billing/health` (`pipeline.monitor`; works while billing is off)
+and `python -m pipeline.billing health` (read-only DB). A system-health layer
+should consume `billing_health()` directly after branch integration.
+
+### Wrong-plan / duplicate payments: operator visibility
+
+`GET /api/admin/billing/incidents` (CorridorIQ operators) and
+`python -m pipeline.billing incidents` list, for the last 30 days: incident type
+(`wrong_plan_payment`, `duplicate_subscription`, `webhook_rejected`),
+`occurred_at`, organization id/name, account type, expected plan, mismatch type
+(`plan_mismatch`, `unknown_price`, `customer_mismatch`, …), observed plan, the
+Stripe **subscription** ID involved (from v0.2 audit details) and the operator
+action. No customer IDs or payment details. CorridorIQ never refunds
+automatically: refunds/cancellations are an owner action in the Stripe Dashboard.
+
+### Concurrency and deployment constraint
+
+Database-level guards (work across threads **and** processes on the one SQLite file):
+
+- `billing_accounts.organization_id` PK (one billing row per organization);
+  `stripe_customer_id` and `stripe_subscription_id` UNIQUE.
+- Event idempotency: `INSERT OR IGNORE` on the `billing_stripe_events.event_id` PK.
+- Every webhook write to `billing_accounts` is compare-and-set on the new
+  `version` column; a lost race raises `ConcurrentBillingUpdate`, the event is
+  marked `error` and answered 503, and Stripe's retry re-fetches fresh state.
+- The Stripe Customer is stored with set-if-absent; its creation uses a
+  deterministic idempotency key, so concurrent creators get the same Customer.
+- Recording a Checkout Session is one atomic statement that cannot overwrite a
+  live subscription state.
+
+Still process-local: the "resume the open Checkout Session" check. Two
+processes could each create a session for the same organization; if both were
+paid, the second subscription is caught as `duplicate_subscription` (never
+applied, audited, refund manually). **Deployment constraint until hardened:
+run exactly one CorridorIQ server process (one billing webhook writer).** The
+prepared production supervisor already runs a single process.

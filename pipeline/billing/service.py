@@ -18,7 +18,7 @@ from pipeline.auth.seed import DEFAULT_ORG_SLUG
 from pipeline.auth.service import write_audit
 from pipeline.billing import store
 from pipeline.billing.config import BillingConfigError
-from pipeline.billing.entitlements import entitlements_for, has_paid_access
+from pipeline.billing.entitlements import PRIORITY, entitlements_for, has_paid_access, request_priority
 from pipeline.billing.gateway import CHECKOUT_HOSTS, PORTAL_HOSTS, BillingGatewayError, is_hosted_url
 from pipeline.billing.plans import Plan, plan_for_account_type
 from pipeline.billing.states import LIVE_SUBSCRIPTION_STATES, BillingState
@@ -115,6 +115,11 @@ def billing_status(conn, user, config) -> dict:
         "state": state.value,
         "paid_access": bool(plan) and has_paid_access(conn, org["id"], plan, config),
         "entitlements": sorted(entitlements_for(conn, org["id"], config)),
+        # Read-only, server-computed; contractor material requests consume request_priority().
+        "request_priority": (request_priority(conn, org["id"], config)
+                             if plan and plan.audience == "contractor" else None),
+        "priority_requests": bool(plan and plan.audience == "contractor"
+                                  and request_priority(conn, org["id"], config) == PRIORITY),
         "cancel_at_period_end": bool(acct["cancel_at_period_end"]) if acct else False,
         "current_period_end": acct["current_period_end"] if acct else None,
         "has_billing_account": bool(acct and acct["stripe_customer_id"]),
@@ -131,8 +136,9 @@ def _ensure_customer(conn, org, plan, acct, config, gateway) -> str:
         raise BillingGatewayError("unexpected customer response")
     if bool(customer.get("livemode")) != config.livemode:
         raise BillingGatewayError("customer created in the wrong Stripe mode")
-    store.update_account(conn, org["id"], stripe_customer_id=cid)
-    return cid
+    # Set-if-absent: a concurrent writer (same idempotency key -> same Customer)
+    # can never replace the stored one.
+    return store.set_customer_if_absent(conn, org["id"], cid)
 
 
 def start_checkout(conn, user, config, gateway, *, ip=None, ua=None) -> dict:
@@ -192,11 +198,8 @@ def start_checkout(conn, user, config, gateway, *, ip=None, ua=None) -> dict:
                 or session.get("mode") != "subscription":
             log.error("billing checkout for organization %s returned an unexpected session", org["id"])
             raise BillingError(UNAVAILABLE, 503)
-        fields = {"checkout_session_id": session.get("id"),
-                  "checkout_expires_at": store.epoch_to_iso(session.get("expires_at"))}
-        if not acct["stripe_subscription_id"] or _state(acct) not in LIVE_SUBSCRIPTION_STATES:
-            fields["billing_state"] = BillingState.CHECKOUT_PENDING.value
-        store.update_account(conn, org["id"], **fields)
+        store.record_checkout_session(conn, org["id"], session.get("id"),
+                                      store.epoch_to_iso(session.get("expires_at")))
         _audit(conn, user, "billing_checkout_started", ip=ip, ua=ua, reused=False, plan=plan.key)
         return {"url": url}
 

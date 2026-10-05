@@ -51,12 +51,18 @@ _FORBIDDEN = {
     "live account pricing": r"live (?:account )?pric|instant (?:account )?pric|your (?:account )?price,? (?:live|instantly)",
     "unapproved Pro price": r"\$\s?\d|/\s?mo(?:nth)?\b|per month",
 }
+# The one approved public price: Contractor Pro, $99/month, on the contractor page only.
+APPROVED_PRICE = "$99/month"
+APPROVED_PRICE_PAGE = "for-contractors.html"
 
 
 @pytest.mark.parametrize("name", PUBLIC_PAGES)
 @pytest.mark.parametrize("claim", sorted(_FORBIDDEN))
 def test_public_page_does_not_advertise(name, claim):
-    hits = _affirmative(_FORBIDDEN[claim], _text(name))
+    text = _text(name)
+    if claim == "unapproved Pro price" and name == APPROVED_PRICE_PAGE:
+        text = text.replace(APPROVED_PRICE, " ")  # any other price or "/month" wording still fails
+    hits = _affirmative(_FORBIDDEN[claim], text)
     assert not hits, f"{name}: {claim}: {hits}"
 
 
@@ -118,13 +124,17 @@ def _comparison_rows():
 
 def test_comparison_states_are_honest():
     rows = _comparison_rows()
-    assert len(rows) == 16
+    assert len(rows) == 17
     for r in rows:
         assert r["state"] in STATES and STATES[r["state"]] == r["label"], r
         if r["group"].startswith("Contractor Pro"):
-            assert r["state"] == "planned" and r["free"] == "n" and r["pro"] == "y", r
+            # Pro is not purchasable yet: every Pro row is Planned or Coming soon, never available.
+            assert r["state"] in ("planned", "soon") and r["free"] == "n" and r["pro"] == "y", r
         else:
             assert r["state"] in ("early", "planned") and r["free"] == "y", r
+    priority = [r for r in rows if r["name"].startswith("Priority Requests")]
+    assert len(priority) == 1 and priority[0]["state"] == "soon"
+    assert "no guaranteed response time" in priority[0]["name"]
     names = " | ".join(r["name"] for r in rows)
     for feature in ("Photo Product Finder", "Compatibility assistance", "Voice-to-material-list",
                     "Good / Better / Best", "Smart substitutions", "Truck stock tracking",
@@ -143,8 +153,12 @@ def test_only_known_product_states_are_used(name):
 def test_pricing_is_free_and_unset():
     con = _text("for-contractors.html")
     assert "Contractor Free · no cost" in con and "No cost" in con
-    assert re.search(r"Pricing for Contractor Pro has not been set", con)
-    assert re.search(r"Paid subscription · pricing not set", con)
+    # Approved price shown; Pro still not open for purchase; no outdated "not set" wording.
+    assert "Contractor Pro is $99/month, month-to-month, and not yet open for purchase" in con
+    assert "$99/month · month-to-month" in con and "$99/month · coming soon" in con
+    assert "not been set" not in con and "pricing not set" not in con
+    assert re.findall(r"\$\s?\d+(?:\.\d+)?", con) and set(re.findall(r"\$\s?\d+(?:\.\d+)?", con)) == {"$99"}
+    assert "supplier response times are not guaranteed" in con
 
 
 def test_homepage_routes_both_audiences_and_sells_the_system():

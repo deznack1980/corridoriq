@@ -171,6 +171,7 @@ _KNOWLEDGE_V21_COLUMNS = [
     ("company_capability_evidence", "evidence_directness", "TEXT"),
     # Billing: supplier vs contractor organizations (existing rows are suppliers).
     ("organizations", "account_type", "TEXT NOT NULL DEFAULT 'supplier'"),
+    ("billing_accounts", "version", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

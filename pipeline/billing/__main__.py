@@ -4,6 +4,8 @@
     python -m pipeline.billing verify-price                 # read-only Stripe GET of every configured plan price
     python -m pipeline.billing verify-price --plan contractor_pro
     python -m pipeline.billing verify-price --allow-live    # same, permitted against live keys
+    python -m pipeline.billing health                       # local billing health report (read-only DB)
+    python -m pipeline.billing incidents                    # wrong-plan / duplicate / rejected incidents
 
 verify-price creates nothing and charges nothing; for each configured plan it
 confirms the Stripe Price exists in the configured mode, is active, recurring
@@ -14,6 +16,8 @@ variable is set) carries that lookup key.
 from __future__ import annotations
 
 import argparse
+import json
+import sqlite3
 import sys
 
 from pipeline.billing.config import load_config
@@ -80,6 +84,13 @@ def verify_price(cfg, allow_live: bool, gateway=None, plan_key: str | None = Non
     return 0 if all(results) else 1
 
 
+def _read_only_db():
+    from pipeline.config.settings import DB_PATH
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -87,10 +98,21 @@ def main(argv=None) -> int:
     vp = sub.add_parser("verify-price")
     vp.add_argument("--allow-live", action="store_true")
     vp.add_argument("--plan", choices=sorted(PLANS))
+    sub.add_parser("health")
+    sub.add_parser("incidents")
     args = parser.parse_args(argv)
     cfg = load_config()
     if args.cmd == "check-config":
         return check_config(cfg)
+    if args.cmd in ("health", "incidents"):
+        from pipeline.billing.health import billing_health, billing_incidents
+        conn = _read_only_db()
+        try:
+            data = billing_health(conn, cfg) if args.cmd == "health" else billing_incidents(conn)
+        finally:
+            conn.close()
+        print(json.dumps(data, indent=2))
+        return 0
     return verify_price(cfg, args.allow_live, plan_key=args.plan)
 
 

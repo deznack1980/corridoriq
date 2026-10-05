@@ -62,6 +62,10 @@
       ["Status", e(statusLabel)],
       [copy.access, s.paid_access ? "Included" : "Not active"],
     ];
+    if (s.plan.audience === "contractor") {
+      // Server-computed from verified billing state (request_priority); never set by the browser.
+      rows.push(["Priority Requests", s.priority_requests ? "Included — priority routing" : "Standard routing"]);
+    }
     if (s.current_period_end && LIVE.includes(s.state)) {
       rows.push([s.cancel_at_period_end ? "Ends" : "Renews", e(fmtDate(s.current_period_end))]);
     }
@@ -85,6 +89,7 @@
           <dl style="display:grid;grid-template-columns:auto 1fr;gap:8px 18px;margin:0">${rows.map(([k, v]) => `<dt class="muted">${e(k)}</dt><dd style="margin:0;font-weight:600">${v}</dd>`).join("")}</dl>
           ${actions ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:16px">${actions}</div>` : ""}
           ${note ? `<p class="muted" style="margin-top:12px">${e(note)}</p>` : ""}
+          ${s.plan.audience === "contractor" ? `<p class="muted" style="margin-top:12px">Priority Requests are routed ahead of standard requests. Suppliers still respond on their own schedule.</p>` : ""}
           <p class="muted" style="margin-top:12px">Payments are processed by Stripe. CorridorIQ never sees or stores card details.</p>
         </div>
       </div>`;

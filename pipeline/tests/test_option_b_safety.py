@@ -155,11 +155,18 @@ def test_no_python_or_shared_runtime_references_sample_data():
 # ---------------------------------------------------------------------------
 
 _PRICE = re.compile(r"\$\s?\d")
+# The single approved commercial price (Contractor Pro), allowed only on the public
+# contractor page. Every other price literal in a served page is still made-up pricing.
+_APPROVED_PRICES = {"for-contractors.html": "$99/month"}
 
 
 def test_no_price_literals_in_served_pages():
     for p in _served_top_level():
         text = p.read_text(encoding="utf-8")
+        approved = _APPROVED_PRICES.get(p.name)
+        if approved:
+            assert approved in text, p.name
+            text = text.replace(approved, "")
         hits = [m.group(0) for m in _PRICE.finditer(text)]
         assert not hits, f"{p.name} contains price literal(s): {hits[:3]}"
     assert not _PRICE.search(_read("demo/procurement-preview.js"))

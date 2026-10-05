@@ -151,7 +151,8 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
         # must review and refund/cancel one of them in Stripe.
         if new_state in LIVE_SUBSCRIPTION_STATES:
             log.error("organization %s has a second live Stripe subscription; manual review needed", org_id)
-            _audit(conn, org_id, "billing_duplicate_subscription", success=False, stripe_event=event_type)
+            _audit(conn, org_id, "billing_duplicate_subscription", success=False, stripe_event=event_type,
+                   subscription=sub.get("id"), kept_subscription=stored_id, plan=plan.key)
             return "ignored:duplicate_subscription"
         return "ignored:other_subscription"
 
@@ -170,7 +171,7 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
     changed = (acct["billing_state"] != new_state.value or acct["current_period_end"] != period_end
                or int(acct["cancel_at_period_end"] or 0) != cancel_flag or stored_id != sub.get("id"))
     store.update_account(
-        conn, org_id,
+        conn, org_id, expect_version=acct["version"],
         stripe_subscription_id=sub.get("id"),
         stripe_price_id=stored_price,
         subscription_status=str(sub.get("status") or ""),
@@ -187,8 +188,10 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
     if not price_ok:
         log.error("organization %s subscription price is not its %s plan price (%s); access not granted",
                   org_id, plan.key, mismatch_reason)
+        observed = next((config.plan_for_price(p) for p in prices if config.plan_for_price(p) not in (None, plan)), None)
         _audit(conn, org_id, "billing_price_mismatch", success=False, stripe_event=event_type, state=new_state.value,
-               reason=mismatch_reason, plan=plan.key)
+               reason=mismatch_reason, plan=plan.key, observed_plan=observed.key if observed else "unknown",
+               subscription=sub.get("id"))
     if now_paid and not was_paid:
         _audit(conn, org_id, "billing_subscription_activated", stripe_event=event_type, state=new_state.value,
                plan=plan.key)
@@ -235,7 +238,7 @@ def _handle(conn, event: dict, config, gateway) -> tuple[str, int | None]:
                 fields = {"checkout_session_id": None, "checkout_expires_at": None}
                 if acct["billing_state"] == BillingState.CHECKOUT_PENDING.value:
                     fields["billing_state"] = BillingState.NONE.value
-                store.update_account(conn, org_id, **fields)
+                store.update_account(conn, org_id, expect_version=acct["version"], **fields)
             return "applied", org_id
 
     subscription_id = _subscription_ref(event_type, obj)
@@ -274,11 +277,15 @@ def handle_webhook(conn, payload: bytes, sig_header: str | None, config, gateway
         try:
             outcome, org_id = _handle(conn, event, config, gateway)
         except BillingGatewayError as exc:
-            store.finish_event(conn, event["id"], "error")
+            store.fail_event(conn, event["id"])
             log.error("stripe webhook %s could not be applied (will be retried): %s", event["type"], exc)
             return 503, {"error": "temporarily unavailable"}
+        except store.ConcurrentBillingUpdate:
+            store.fail_event(conn, event["id"])
+            log.warning("stripe webhook %s lost a concurrent update race (will be retried)", event["type"])
+            return 503, {"error": "temporarily unavailable"}
         except Exception:
-            store.finish_event(conn, event["id"], "error")
+            store.fail_event(conn, event["id"])
             log.exception("stripe webhook %s failed (will be retried)", event["type"])
             return 500, {"error": "internal error"}
         store.finish_event(conn, event["id"], outcome, org_id)

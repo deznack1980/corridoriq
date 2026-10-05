@@ -212,8 +212,17 @@
     return map[r[0]] || (r[0] || "Employee");
   }
 
+  // Real contractor account (not the admin-only contractor preview screens).
+  CIQ.isContractorAccount = function () {
+    const roles = (CIQ.user && CIQ.user.roles) || [];
+    return roles.includes("contractor_owner") && !roles.includes("admin");
+  };
+
   CIQ.renderShell = function (opts) {
     opts = opts || {};
+    // Supplier-only top-bar controls (company search, CRM tasks) are not
+    // rendered for contractor accounts or the contractor preview.
+    const contractorView = opts.portal === "contractor" || CIQ.isContractorAccount();
     const app = document.createElement("div");
     app.className = "app"; app.id = "ciqApp";
     app.innerHTML = `
@@ -237,13 +246,13 @@
             <h1>${CIQ.esc(opts.title || "")}</h1>
             ${opts.subtitle ? `<div class="subtitle">${CIQ.esc(opts.subtitle)}</div>` : ""}
           </div>
-          <form class="topbar-search" id="ciqSearchForm"${opts.portal === "contractor" ? ' style="visibility:hidden"' : ""}>
+          ${contractorView ? '<div class="topbar-search" aria-hidden="true" style="visibility:hidden"></div>' : `<form class="topbar-search" id="ciqSearchForm">
             <span class="si">⌕</span>
             <input type="search" id="ciqSearch" placeholder="Search companies…" autocomplete="off" />
-          </form>
+          </form>`}
           <div class="topbar-actions">
             ${opts.sample ? '<span class="sample-pill" title="Fictional demonstration data">Sample data</span>' : ""}
-            <button class="icon-btn" id="ciqTasksBtn" title="Tasks" aria-label="Tasks"${opts.portal === "contractor" ? ' style="display:none"' : ""}>✓</button>
+            ${contractorView ? "" : '<button class="icon-btn" id="ciqTasksBtn" title="Tasks" aria-label="Tasks">✓</button>'}
             <div class="profile" id="ciqProfile" tabindex="0">
               <div class="avatar">${CIQ.esc(initials(CIQ.user.display_name || CIQ.user.email))}</div>
               <div class="stack">
@@ -272,7 +281,8 @@
     const go = (e) => { e.preventDefault(); CIQ.logout(); };
     app.querySelector("#ciqSignout").addEventListener("click", go);
     app.querySelector("#ciqMenuSignout").addEventListener("click", go);
-    app.querySelector("#ciqTasksBtn").addEventListener("click", () => location.href = "my-tasks.html");
+    const tasksBtn = app.querySelector("#ciqTasksBtn");
+    if (tasksBtn) tasksBtn.addEventListener("click", () => location.href = "my-tasks.html");
     const burger = app.querySelector("#ciqBurger");
     burger.addEventListener("click", () => app.classList.toggle("nav-open"));
     app.querySelector("#ciqScrim").addEventListener("click", () => app.classList.remove("nav-open"));
@@ -280,7 +290,7 @@
     prof.addEventListener("click", (e) => { if (e.target.closest(".menu")) return; menu.classList.toggle("open"); });
     document.addEventListener("click", (e) => { if (!prof.contains(e.target)) menu.classList.remove("open"); });
     const sform = app.querySelector("#ciqSearchForm");
-    sform.addEventListener("submit", (e) => {
+    if (sform) sform.addEventListener("submit", (e) => {
       e.preventDefault();
       const q = app.querySelector("#ciqSearch").value.trim();
       location.href = "my-companies.html" + (q ? "?q=" + encodeURIComponent(q) : "");

@@ -1667,6 +1667,9 @@ CREATE TABLE IF NOT EXISTS billing_accounts (
     checkout_session_id     TEXT,
     checkout_expires_at     TEXT,
     billing_updated_at      TEXT,            -- last change derived from Stripe
+    -- Optimistic concurrency: every write is compare-and-set on this value, so
+    -- two writers (threads or processes) can never silently overwrite each other.
+    version                 INTEGER NOT NULL DEFAULT 0,
     created_at              TEXT NOT NULL,
     updated_at              TEXT NOT NULL
 );
@@ -1682,3 +1685,17 @@ CREATE TABLE IF NOT EXISTS billing_stripe_events (
     processed_at            TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_billing_events_org ON billing_stripe_events(organization_id);
+CREATE INDEX IF NOT EXISTS idx_billing_events_outcome ON billing_stripe_events(outcome, received_at);
+
+-- Contractor account details captured at provisioning (signup data contract,
+-- pipeline/billing/contractor_accounts.py). Contact name / email / phone live
+-- on the owner's users row. ROC license is optional by design.
+CREATE TABLE IF NOT EXISTS contractor_profiles (
+    organization_id         INTEGER PRIMARY KEY REFERENCES organizations(id),
+    business_zip            TEXT,
+    business_address        TEXT,
+    roc_license             TEXT,
+    created_by              INTEGER REFERENCES users(id),
+    created_at              TEXT NOT NULL,
+    updated_at              TEXT NOT NULL
+);
