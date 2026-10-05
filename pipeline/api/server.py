@@ -17,6 +17,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from pipeline.auth.rbac import AuthzError
+from pipeline.billing import service as billing
+from pipeline.billing.config import billing_enabled, load_config as load_billing_config
+from pipeline.billing.gateway import default_gateway as default_billing_gateway
+from pipeline.billing.webhook import MAX_PAYLOAD_BYTES as BILLING_MAX_WEBHOOK_BYTES
+from pipeline.billing.webhook import handle_webhook as handle_billing_webhook
 from pipeline.auth.service import (
     AuthError,
     change_password,
@@ -91,6 +96,13 @@ _PORTAL_PAGES = {
     "portal.css",
 }
 
+# Supplier billing (Stripe). Off unless CORRIDORIQ_BILLING_ENABLED=1; while
+# off, the billing page and every /api/billing route answer 404.
+_BILLING_PAGES = {"billing.html", "billing.js"}
+_BILLING_PREFIX = "/api/billing/"
+_BILLING_WEBHOOK = "/api/billing/stripe/webhook"
+_BILLING_MAX_ACTION_BODY = 16 * 1024
+
 _ID = r"(\d+)"
 _SALES_COMPANY_RE = re.compile(
     rf"^/api/sales/companies/{_ID}(?:/(projects|permits|activities|relationship))?$")
@@ -101,6 +113,11 @@ _ADMIN_USER_RE = re.compile(rf"^/api/admin/users/{_ID}$")
 def _factory():
     """Connection factory (overridable in tests)."""
     return get_connection()
+
+
+def _billing_gateway(config):
+    """Stripe gateway factory (overridable in tests, which never reach Stripe)."""
+    return default_billing_gateway(config)
 
 
 def static_target(path: str):
@@ -122,6 +139,8 @@ def static_target(path: str):
     suffix = os.path.splitext(name)[1].lower()
     if len(parts) == 1:
         if name in _LEGACY_UNSERVED:
+            return None, None
+        if name in _BILLING_PAGES and not billing_enabled():
             return None, None
         if name not in _PORTAL_PAGES and suffix not in _STATIC_SUFFIXES:
             return None, None
@@ -284,6 +303,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             if self._serve_static(path):
                 return
             return self._json(404, {"error": "not found"})
+        if path.startswith(_BILLING_PREFIX):
+            return self._billing_dispatch("GET", path)
         query = self._flatten(parse_qs(parsed.query))
         conn = _factory()
         try:
@@ -308,6 +329,8 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _write_dispatch(self, method):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path.startswith(_BILLING_PREFIX):
+            return self._billing_dispatch(method, path)
         conn = _factory()
         try:
             body = self._body()
@@ -321,6 +344,69 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._json(400, {"error": str(exc)})
         except Exception:  # pragma: no cover
             # Never echo internals (paths, SQL, stack detail) to the client.
+            self._json(500, {"error": "internal error"})
+        finally:
+            conn.close()
+
+    # ---- billing (Stripe) -------------------------------------------------
+    def _billing_dispatch(self, method, path):
+        """/api/billing/*: status, checkout and portal need a session; the
+        webhook is authenticated by its Stripe signature instead."""
+        if not billing_enabled():
+            return self._json(404, {"error": "not found"})
+        length = int(self.headers.get("Content-Length") or 0)
+        if path == _BILLING_WEBHOOK:
+            if method != "POST":
+                return self._json(405, {"error": "method not allowed"})
+            if length <= 0 or length > BILLING_MAX_WEBHOOK_BYTES:
+                return self._json(400, {"error": "invalid payload"})
+            raw = self.rfile.read(length)
+            config = load_billing_config()
+            gateway = None if config.webhook_problems() else _billing_gateway(config)
+            conn = _factory()
+            try:
+                status, payload = handle_billing_webhook(
+                    conn, raw, self.headers.get("Stripe-Signature"), config, gateway)
+            except Exception:  # pragma: no cover - never echo internals
+                status, payload = 500, {"error": "internal error"}
+            finally:
+                conn.close()
+            return self._json(status, payload)
+
+        if length > _BILLING_MAX_ACTION_BODY:
+            return self._json(413, {"error": "request too large"})
+        if length:
+            self.rfile.read(length)  # ignored: the server decides every billing parameter
+        actions = {("GET", "/api/billing/status"), ("POST", "/api/billing/checkout"),
+                   ("POST", "/api/billing/portal")}
+        if (method, path) not in actions:
+            return self._json(404, {"error": "unknown route"})
+        if method == "POST":
+            # CSRF hardening on top of SameSite=Lax: a cross-site HTML form
+            # cannot send application/json without a CORS preflight.
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                return self._json(415, {"error": "unsupported media type"})
+        conn = _factory()
+        try:
+            user = self._require_user(conn)
+            if user is None:
+                return
+            self._cur_user = user
+            ip, ua = self._client()
+            config = load_billing_config()
+            if path == "/api/billing/status":
+                return self._json(200, billing.billing_status(conn, user, config))
+            gateway = _billing_gateway(config) if not config.problems() else None
+            if path == "/api/billing/checkout":
+                return self._json(200, billing.start_checkout(conn, user, config, gateway, ip=ip, ua=ua))
+            return self._json(200, billing.create_portal_session(conn, user, config, gateway, ip=ip, ua=ua))
+        except AuthzError as exc:
+            self._deny(conn, getattr(self, "_cur_user", None), path, str(exc))
+            self._json(exc.status, {"error": str(exc)})
+        except billing.BillingError as exc:
+            self._json(exc.status, {"error": str(exc)})
+        except Exception:  # pragma: no cover - fail closed, never echo internals
             self._json(500, {"error": "internal error"})
         finally:
             conn.close()

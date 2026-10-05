@@ -1644,3 +1644,38 @@ CREATE TABLE IF NOT EXISTS sales_presentation_notes (
     created_at                  TEXT NOT NULL,
     UNIQUE(company_id, topic, model_version)
 );
+
+-- ============================================================
+-- Supplier billing (Stripe). One row per supplier organization.
+-- Stripe is authoritative for payment state; these rows are written only from
+-- server-side Stripe calls and signature-verified webhooks. No card data,
+-- no raw Stripe payloads, no secrets.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS billing_accounts (
+    organization_id         INTEGER PRIMARY KEY REFERENCES organizations(id),
+    stripe_customer_id      TEXT UNIQUE,
+    stripe_subscription_id  TEXT UNIQUE,
+    stripe_price_id         TEXT,
+    subscription_status     TEXT,            -- raw Stripe status, for operators
+    billing_state           TEXT NOT NULL DEFAULT 'none',
+    livemode                INTEGER,         -- 1 live / 0 test, from Stripe objects
+    current_period_end      TEXT,
+    cancel_at_period_end    INTEGER NOT NULL DEFAULT 0,
+    checkout_session_id     TEXT,
+    checkout_expires_at     TEXT,
+    billing_updated_at      TEXT,            -- last change derived from Stripe
+    created_at              TEXT NOT NULL,
+    updated_at              TEXT NOT NULL
+);
+
+-- Webhook idempotency: one row per Stripe event ID. Payloads are not stored.
+CREATE TABLE IF NOT EXISTS billing_stripe_events (
+    event_id                TEXT PRIMARY KEY,
+    event_type              TEXT NOT NULL,
+    livemode                INTEGER NOT NULL,
+    organization_id         INTEGER REFERENCES organizations(id),
+    outcome                 TEXT NOT NULL,   -- processing | applied | ignored:* | rejected:* | error
+    received_at             TEXT NOT NULL,
+    processed_at            TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_billing_events_org ON billing_stripe_events(organization_id);

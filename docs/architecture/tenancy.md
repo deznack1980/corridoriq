@@ -88,3 +88,9 @@ per-action grant made by the data owner.
   can read every tenant file. Restrict the directory to the service account.
 - No encryption at rest beyond the disk's own.
 - No authentication/API surface exists for tenants yet; this is offline tooling.
+
+## Billing
+
+Subscription billing is attached to `organizations` (the unit that owns users,
+sessions and CRM data), not to this file-based tenant registry. See
+[`docs/operations/stripe_billing.md`](../operations/stripe_billing.md).

@@ -45,6 +45,7 @@ PERMISSIONS: dict[str, str] = {
     "supplier_pricing.manage": "Manage supplier pricing",
     "pipeline.monitor": "View detailed data-pipeline run status and errors",
     "pipeline.run": "Trigger the data pipeline / morning refresh manually",
+    "billing.manage": "Start a subscription and manage billing for the organization",
     "admin.system": "Full system administration",
 }
 
@@ -61,6 +62,8 @@ _SALES_MANAGER = _SALES_REP | {
     "companies.view", "companies.assign", "companies.export",
     "projects.view", "crm.activities.edit_all", "crm.tasks.assign",
     "reports.export", "users.view",
+    # A supply house's branch/sales manager owns its CorridorIQ subscription.
+    "billing.manage",
 }
 _READ_ONLY = {
     "companies.view_assigned", "projects.view_assigned", "permits.view",

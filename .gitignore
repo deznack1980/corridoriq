@@ -20,3 +20,8 @@ logs/
 # Temp / scratch
 tmp_*.py
 srv_out.log
+
+# Environment files (secrets). Only the names-only example is tracked.
+.env
+.env.*
+!.env.example
