@@ -56,7 +56,7 @@
     const orgAllowed = CIQ.hasPerm("companies.view");
     root.innerHTML = `
       <div class="mw-head">
-        <div><h2>Phoenix metro · live permit activity</h2><div class="sub mw-summary">Loading…</div></div>
+        <div><h2>Phoenix metro · published permit records</h2><div class="sub mw-summary">Loading…</div></div>
         <div class="mw-controls">
           <select class="mw-context">
             <option value="assigned">My / assigned companies</option>
