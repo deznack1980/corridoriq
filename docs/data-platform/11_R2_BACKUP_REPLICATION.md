@@ -140,6 +140,25 @@ Unchanged: no upload, no deep verify, nothing off-site. Local verified backup re
 
 ---
 
+## Recheck — 2026-10-05
+
+Same machine, Python 3.14.3, OpenSSL 3.0.18, certificate verification left on.
+No proxy and no custom CA bundle. The account id is 32 hex characters and the
+endpoint shape is `https://<account-id>.r2.cloudflarestorage.com`. The
+configured bucket name is `corridoriqbackup`. `CORRIDORIQ_R2_ENDPOINT` is unset.
+
+| Probe | Result |
+| --- | --- |
+| `cloudflare.com:443` | TLS 1.3, verification on |
+| `<account-id>.r2.cloudflarestorage.com` | `SSLV3_ALERT_HANDSHAKE_FAILURE` before a certificate |
+| `<account-id>.fedramp.r2.cloudflarestorage.com` | TLS 1.3, then `HeadBucket` HTTP 403 |
+| DNS | Cloudflare anycast addresses |
+
+No upload was attempted. FedRAMP is not a substitute endpoint. The standard
+account certificate is still a Cloudflare-side fix.
+
+---
+
 ## Offline implementation status (already proven)
 
 `pipeline/tests/test_replication.py`: 21 passed against an in-memory S3

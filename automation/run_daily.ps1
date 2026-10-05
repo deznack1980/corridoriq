@@ -12,7 +12,8 @@
 # $LASTEXITCODE below instead.
 $ErrorActionPreference = "Continue"
 
-$ProjectRoot = "C:\Users\dezna\OneDrive\Desktop\CorridorIQ"
+# The checkout that contains this script. Not a OneDrive development tree.
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
 $LogDir = Join-Path $ProjectRoot "logs"
 $Timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 $LogFile = Join-Path $LogDir "daily_run_$Timestamp.log"
@@ -27,10 +28,13 @@ function Write-Log {
 }
 
 Write-Log "=== CorridorIQ daily run starting ==="
+Write-Log "Root: $ProjectRoot"
+$pyver = & py -3 -c "import sys; print(sys.version)"
+Write-Log "Python: $pyver"
 
 Set-Location $ProjectRoot
-Write-Log "Running pipeline: python pipeline/run.py"
-$pipelineOutput = & python pipeline/run.py 2>&1 | Out-String
+Write-Log "Running pipeline: py -3 pipeline/run.py"
+$pipelineOutput = & py -3 pipeline/run.py 2>&1 | Out-String
 Add-Content -Path $LogFile -Value $pipelineOutput
 $pipelineExitCode = $LASTEXITCODE
 
@@ -45,7 +49,8 @@ Write-Log "Running OpenClaw summary step via WSL..."
 
 $env:MSYS_NO_PATHCONV = "1"
 $env:MSYS2_ARG_CONV_EXCL = "*"
-$wslScript = "/mnt/c/Users/dezna/OneDrive/Desktop/CorridorIQ/automation/openclaw_summary.sh"
+if ($ProjectRoot -notmatch '^([A-Za-z]):\\(.*)$') { throw "Cannot map $ProjectRoot into WSL" }
+$wslScript = "/mnt/$($Matches[1].ToLower())/$($Matches[2] -replace '\\','/')/automation/openclaw_summary.sh"
 $summaryOutput = & wsl.exe -d Ubuntu -- bash $wslScript 2>&1 | Out-String
 Add-Content -Path $LogFile -Value $summaryOutput
 $summaryExitCode = $LASTEXITCODE

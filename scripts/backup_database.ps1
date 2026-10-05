@@ -25,15 +25,8 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
-# 2. Activate the project's Python environment if one is present.
-$Python = "python"
-$VenvActivate = Join-Path $Root ".venv\Scripts\Activate.ps1"
-if (Test-Path $VenvActivate) {
-    . $VenvActivate
-} elseif (Test-Path (Join-Path $Root "venv\Scripts\Activate.ps1")) {
-    . (Join-Path $Root "venv\Scripts\Activate.ps1")
-}
-
+# Python 3.14 via the launcher. Do not activate a project venv: the scheduled
+# job used to pick up Python 3.12 from `python` on PATH.
 $env:PYTHONUTF8 = "1"
 
 # 3. Timestamped log file.
@@ -43,9 +36,12 @@ $Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $LogFile = Join-Path $LogDir "backup_$Stamp.log"
 
 "[$(Get-Date -Format o)] Starting CorridorIQ database backup" | Tee-Object -FilePath $LogFile
+"[$(Get-Date -Format o)] Root: $Root" | Tee-Object -FilePath $LogFile -Append
+$pyver = & py -3 -c "import sys; print(sys.version)"
+"[$(Get-Date -Format o)] Python: $pyver" | Tee-Object -FilePath $LogFile -Append
 
 # 4. Create + verify + prune.
-& $Python -m pipeline.db.backup *>&1 | Tee-Object -FilePath $LogFile -Append
+& py -3 -m pipeline.db.backup *>&1 | Tee-Object -FilePath $LogFile -Append
 $code = $LASTEXITCODE
 
 "[$(Get-Date -Format o)] Finished with exit code $code" | Tee-Object -FilePath $LogFile -Append

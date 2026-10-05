@@ -12,14 +12,16 @@ calls Stripe. No live webhook endpoint is registered.
 | Price | $750 USD / month recurring — `price_1UN6Fd4RtdKUQkwzqRlc3bPc` |
 | Lookup key | `corridoriq_founding_supply_partner_monthly` |
 | Statement descriptor | `CORRIDORIQ` |
+| Product | CorridorIQ Contractor Pro — `prod_VNuyXNl2EIWREr` |
+| Price | $99 USD / month recurring — `price_1UN9904RtdKUQkwzmuCRRHRd` |
+| Lookup key | `corridoriq_contractor_pro_monthly` |
 
-These belong to CorridorIQ's own Stripe account. Nothing here uses any other
-company's Stripe account, keys, products or webhooks. The code never creates
-products or prices; prices are configuration (`STRIPE_FOUNDING_SUPPLY_PRICE_ID`,
+These live objects already exist. Do not create another Contractor Pro product
+or price. Prices are configuration (`STRIPE_FOUNDING_SUPPLY_PRICE_ID`,
 `STRIPE_CONTRACTOR_PRO_PRICE_ID`), and "$750/month" / "$99/month" are display
-text only (`pipeline/billing/plans.py`).
+text only (`pipeline/billing/plans.py`). Nothing here uses any other company's
+Stripe account, keys, products or webhooks.
 
-**Contractor Pro has no live Stripe objects yet** (separate owner decision).
 TEST-mode objects used for validation (Corridor IQ account, sandbox):
 
 | Plan | TEST product | TEST price | Lookup key |
@@ -52,9 +54,9 @@ Contractor Pro positioning is deliberately modest: "Priority access to
 CorridorIQ's contractor workflow and premium capabilities as they become
 available." No response-time, inventory, pricing, savings or lead guarantees.
 `entitlements.request_priority(conn, org_id)` returns `priority` for an active
-Contractor Pro organization (else `standard`) as the integration point for the
-contractor material-request flow; it carries no service-level commitment. The
-material-request system is not part of this branch, so nothing consumes it yet.
+Contractor Pro organization (else `standard`). Material-request creation uses
+that result for the billing organization that owns the signed-in contractor's
+email. It carries no service-level commitment.
 
 ## Architecture
 
@@ -327,22 +329,26 @@ python -m pipeline.billing verify-price --allow-live # read-only GET, live keys
 - An organization with no eligible plan (internal org, unknown account type)
   -> `rejected:no_eligible_plan`.
 
-## Creating the LIVE Contractor Pro product (later, owner-authorized)
+## Live Contractor Pro already exists — do not create another
 
-1. Stripe Dashboard (live): Product "CorridorIQ Contractor Pro"; recurring
-   Price 99.00 USD monthly; lookup key `corridoriq_contractor_pro_monthly`;
-   statement descriptor as decided; tax behaviour as decided.
-2. Live Customer Portal: keep **plan switching disabled**; use a plan-neutral
+The live product `prod_VNuyXNl2EIWREr` and price
+`price_1UN9904RtdKUQkwzmuCRRHRd` ($99/month, lookup
+`corridoriq_contractor_pro_monthly`) are already on CorridorIQ's Stripe
+account. Do not create a second product or price.
+
+When billing is separately approved:
+
+1. Live Customer Portal: keep **plan switching disabled**; use a plan-neutral
    headline (both plans share the default portal configuration).
-3. Set `STRIPE_CONTRACTOR_PRO_PRICE_ID` (+ lookup key) on the production
-   service only; run `python -m pipeline.billing check-config` and
+2. Set `STRIPE_CONTRACTOR_PRO_PRICE_ID` to `price_1UN9904RtdKUQkwzmuCRRHRd`
+   and the lookup key to `corridoriq_contractor_pro_monthly` on the production
+   service only. Run `python -m pipeline.billing check-config` and
    `python -m pipeline.billing verify-price --plan contractor_pro --allow-live`
    (read-only; checks 9900 USD / month, active, mode).
-4. Create contractor organizations (`account_type='contractor'`) and
+3. Create contractor organizations (`account_type='contractor'`) and
    `contractor_owner` users for the first customers.
-5. Update public pages (`for-contractors.html` still says Contractor Pro
-   pricing is not set and lists planned features) only with separately
-   approved copy.
+4. Public purchase copy stays "coming soon" until that verification succeeds.
+   `for-contractors.html` already states $99/month and that purchase is not open.
 
 ## v0.2 — integration contracts (Contractor Pro hardening)
 

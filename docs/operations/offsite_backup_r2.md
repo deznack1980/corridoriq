@@ -60,7 +60,7 @@ python -m pip install boto3
 
 In the Cloudflare dashboard: **R2 → Create bucket**.
 
-- Name: `corridoriq-backups`
+- Name: `corridoriqbackup` (this is the configured bucket; older notes that say `corridoriq-backups` are stale)
 - Location: automatic
 - Leave public access **disabled**. These are database backups; they must not
   be reachable without credentials.
@@ -70,7 +70,7 @@ In the Cloudflare dashboard: **R2 → Create bucket**.
 **R2 → Manage R2 API Tokens → Create API Token**.
 
 - Permission: **Object Read & Write** (not Admin)
-- Scope it to the `corridoriq-backups` bucket only
+- Scope it to the `corridoriqbackup` bucket only
 - Save the **Access Key ID** and **Secret Access Key** — the secret is shown
   once
 
@@ -87,13 +87,23 @@ runs as:
 setx CORRIDORIQ_R2_ACCOUNT_ID      "<cloudflare account id>"
 setx CORRIDORIQ_R2_ACCESS_KEY_ID   "<access key id>"
 setx CORRIDORIQ_R2_SECRET_ACCESS_KEY "<secret access key>"
-setx CORRIDORIQ_R2_BUCKET          "corridoriq-backups"
+setx CORRIDORIQ_R2_BUCKET          "corridoriqbackup"
 ```
 
 `setx` affects **new** processes only — open a fresh terminal afterwards.
 
 The account ID is the hex string in your R2 endpoint,
-`https://<account-id>.r2.cloudflarestorage.com`.
+`https://<account-id>.r2.cloudflarestorage.com`. That is the only endpoint
+this application uses. The bucket `corridoriqbackup` already exists; do not
+create a second one.
+
+As of 2026-10-05 the standard account endpoint closes the TLS handshake with
+`SSLV3_ALERT_HANDSHAKE_FAILURE` before any HTTP request. `cloudflare.com`
+completes TLS 1.3 from the same machine, with certificate verification left
+on. The FedRAMP hostname presents a certificate and then returns HTTP 403 for
+the current token. Do not switch replication to FedRAMP, and do not disable
+certificate verification. Off-machine backup stays blocked until Cloudflare
+serves a certificate for the standard account endpoint.
 
 ### 5. Confirm
 

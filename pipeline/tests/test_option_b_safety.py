@@ -476,6 +476,7 @@ _OVERCLAIMS = {
     "real-time data": r"real[- ]?time",
     "complete coverage": r"complete coverage|all (?:of )?(?:the )?phoenix(?:-area| metro)? permits|every permit in",
     "universal daily freshness": r"every morning|each morning|refreshed daily|updated daily|daily refresh|daily,? permit",
+    "guaranteed collection schedule": r"on a schedule|collected on a schedule|scheduled refresh|collects new permit records",
     "listed live coverage": r"live coverage",
     "live inventory": r"inventory",
     "live supplier pricing": r"live (?:supplier )?pric|real-time pric|contractor-specific pric",
@@ -497,6 +498,13 @@ def test_public_page_makes_no_overclaim(name, claim):
     text = _visible_text(name)
     m = re.search(_OVERCLAIMS[claim], text, re.I)
     assert not m, f"{name}: {claim}: …{text[max(0, m.start() - 60):m.end() + 60]}…"
+
+
+def test_permit_records_are_described_as_published_not_scheduled():
+    for name in ("home.html", "for-suppliers.html"):
+        assert "published by participating jurisdictions" in _visible_text(name), name
+    landing = (REPO / "landing.html").read_text(encoding="utf-8")
+    assert "published by participating jurisdictions" in landing
 
 
 def test_public_coverage_and_procurement_are_qualified():
