@@ -639,6 +639,9 @@ CREATE TABLE IF NOT EXISTS organizations (
     name                TEXT NOT NULL,
     slug                TEXT NOT NULL UNIQUE,
     is_active           INTEGER NOT NULL DEFAULT 1,
+    -- supplier | contractor. Set by CorridorIQ only; decides the one billing
+    -- plan the organization may buy (pipeline/billing/plans.py).
+    account_type        TEXT NOT NULL DEFAULT 'supplier',
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL
 );

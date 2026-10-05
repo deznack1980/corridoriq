@@ -1,4 +1,4 @@
-# Supplier billing with Stripe
+# CorridorIQ billing with Stripe (Founding Supply Partner + Contractor Pro)
 
 Status: **built, not activated.** Off by default (`CORRIDORIQ_BILLING_ENABLED`
 unset). While off, `/api/billing/*` and `billing.html` answer 404 and nothing
@@ -15,8 +15,46 @@ calls Stripe. No live webhook endpoint is registered.
 
 These belong to CorridorIQ's own Stripe account. Nothing here uses any other
 company's Stripe account, keys, products or webhooks. The code never creates
-products or prices; the price is configuration (`STRIPE_FOUNDING_SUPPLY_PRICE_ID`),
-and "$750/month" is display text only (`pipeline/billing/config.py`).
+products or prices; prices are configuration (`STRIPE_FOUNDING_SUPPLY_PRICE_ID`,
+`STRIPE_CONTRACTOR_PRO_PRICE_ID`), and "$750/month" / "$99/month" are display
+text only (`pipeline/billing/plans.py`).
+
+**Contractor Pro has no live Stripe objects yet** (separate owner decision).
+TEST-mode objects used for validation (Corridor IQ account, sandbox):
+
+| Plan | TEST product | TEST price | Lookup key |
+|---|---|---|---|
+| Founding Supply Partner | `prod_VNu5qTj6A5Hqpm` | `price_1UN8Gu4RtdKUQkwz3KG6scnF` ($750/mo) | `corridoriq_founding_supply_partner_monthly_test` |
+| Contractor Pro | `prod_VNvUJwlgCq9Ice` | `price_1UN9dk4RtdKUQkwzphB7Kkk3` ($99/mo) | `corridoriq_contractor_pro_monthly_test` |
+
+## Plans (`pipeline/billing/plans.py`)
+
+| Plan key | Audience (`organizations.account_type`) | Entitlement | Expected amount |
+|---|---|---|---|
+| `founding_supply_partner` | `supplier` | `supplier_intelligence` | 75000 USD / month |
+| `contractor_pro` | `contractor` | `contractor_pro` | 9900 USD / month |
+
+The organization's `account_type` (set by CorridorIQ, default `supplier`)
+decides the **only** plan it may buy. The browser never chooses plan, price,
+quantity, customer, account type or entitlement. A contractor subscription can
+never grant `supplier_intelligence` and a supplier subscription can never grant
+`contractor_pro`: entitlement requires plan audience == organization account
+type **and** the stored price == that plan's configured price.
+
+Contractor accounts are organizations with `account_type='contractor'` whose
+users hold the `contractor_owner` role (`billing.manage` only; landing page
+`billing.html`; portal navigation shows only "Contractor Pro"). There is no
+self-service sign-up yet: an administrator creates the organization and user.
+Do not give contractor organizations supplier roles (sales_manager etc.); RBAC,
+not billing, controls access to supplier screens.
+
+Contractor Pro positioning is deliberately modest: "Priority access to
+CorridorIQ's contractor workflow and premium capabilities as they become
+available." No response-time, inventory, pricing, savings or lead guarantees.
+`entitlements.request_priority(conn, org_id)` returns `priority` for an active
+Contractor Pro organization (else `standard`) as the integration point for the
+contractor material-request flow; it carries no service-level commitment. The
+material-request system is not part of this branch, so nothing consumes it yet.
 
 ## Architecture
 
@@ -61,7 +99,7 @@ pipeline.billing.entitlements.supplier_has_paid_access()  → entitlements
 | `POST /api/billing/portal` | session + `billing.manage` + JSON | returns Customer Portal URL |
 | `POST /api/billing/stripe/webhook` | Stripe-Signature | event intake |
 
-`billing.manage` is granted to the `admin` and `sales_manager` roles.
+`billing.manage` is granted to the `admin`, `sales_manager` and `contractor_owner` roles.
 Request bodies of checkout/portal are discarded: price, quantity, customer,
 redirect URLs and entitlement are decided by the server. Success, cancel and
 return URLs are built from `CORRIDORIQ_PUBLIC_BASE_URL` (never the Host header):
@@ -178,6 +216,8 @@ never in git (`.gitignore` ignores `.env*` except the example).
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` of this environment's endpoint |
 | `STRIPE_FOUNDING_SUPPLY_PRICE_ID` | live: `price_1UN6Fd4RtdKUQkwzqRlc3bPc`; test: a test-mode price |
 | `STRIPE_FOUNDING_SUPPLY_PRICE_LOOKUP_KEY` | optional, `corridoriq_founding_supply_partner_monthly` |
+| `STRIPE_CONTRACTOR_PRO_PRICE_ID` | optional until Contractor Pro is sold; must differ from the Founding price. Unset = contractor Checkout answers 503, suppliers unaffected |
+| `STRIPE_CONTRACTOR_PRO_PRICE_LOOKUP_KEY` | optional cross-check for `verify-price` |
 
 Recommended live key: a **restricted key** (`rk_live_`) with write access to
 Customers, Checkout Sessions, Customer Portal sessions and read access to
@@ -228,8 +268,10 @@ python -m pipeline.billing verify-price --allow-live # read-only GET, live keys
 ## Production activation (separately authorized)
 
 1. Back up the database. Deploy the approved commit; on first start
-   `init_db()` creates the two empty billing tables and the `billing.manage`
-   permission/role grants (additive only).
+   `init_db()` creates the two empty billing tables, adds
+   `organizations.account_type` (`NOT NULL DEFAULT 'supplier'`, so every
+   existing organization stays a supplier), and seeds the `billing.manage`
+   permission, its grants and the `contractor_owner` role (additive only).
 2. Configure the live Customer Portal; create the live webhook endpoint.
 3. Set live env vars on the production service (restricted live key, live
    price, live `whsec_`, `CORRIDORIQ_ENV=production`,
@@ -268,3 +310,36 @@ python -m pipeline.billing verify-price --allow-live # read-only GET, live keys
   `livemode` differs from the key's mode are rejected; entitlement requires
   matching livemode.
 - TLS verification of the Stripe SDK is left at its default (on).
+
+## Contractor Pro: webhook and checkout specifics
+
+- Checkout picks the plan from the organization's account type and the price
+  from that plan's configuration; a still-open Checkout Session is resumed
+  only if its single line item is that price (sessions are retrieved with
+  `expand=["line_items"]`).
+- Webhook: after re-fetching the subscription, every item must be exactly the
+  organization's plan price. Another plan's price -> `applied:plan_mismatch`;
+  any other price -> `applied:unknown_price`; both store the price (so state
+  is visible to operators), audit `billing_price_mismatch` and grant nothing.
+- CorridorIQ metadata on a Checkout Session or on the re-fetched subscription
+  (`corridoriq_tenant_id`, `corridoriq_account_type`, `corridoriq_plan`) must
+  match the organization when present, else `rejected:*_mismatch`.
+- An organization with no eligible plan (internal org, unknown account type)
+  -> `rejected:no_eligible_plan`.
+
+## Creating the LIVE Contractor Pro product (later, owner-authorized)
+
+1. Stripe Dashboard (live): Product "CorridorIQ Contractor Pro"; recurring
+   Price 99.00 USD monthly; lookup key `corridoriq_contractor_pro_monthly`;
+   statement descriptor as decided; tax behaviour as decided.
+2. Live Customer Portal: keep **plan switching disabled**; use a plan-neutral
+   headline (both plans share the default portal configuration).
+3. Set `STRIPE_CONTRACTOR_PRO_PRICE_ID` (+ lookup key) on the production
+   service only; run `python -m pipeline.billing check-config` and
+   `python -m pipeline.billing verify-price --plan contractor_pro --allow-live`
+   (read-only; checks 9900 USD / month, active, mode).
+4. Create contractor organizations (`account_type='contractor'`) and
+   `contractor_owner` users for the first customers.
+5. Update public pages (`for-contractors.html` still says Contractor Pro
+   pricing is not set and lists planned features) only with separately
+   approved copy.

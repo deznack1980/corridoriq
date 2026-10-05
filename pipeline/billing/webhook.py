@@ -11,6 +11,10 @@ Trust model
 4. Subscription state is re-fetched from the Stripe API, so the payload's
    own status fields are never trusted, and out-of-order events converge on
    Stripe's current state.
+5. The organization's account type decides its one eligible plan; the
+   re-fetched subscription must carry exactly that plan's configured price
+   (and, where present, matching CorridorIQ metadata). An unknown price, the
+   other plan's price, or a metadata mismatch never yields an entitlement.
 
 Responses: 2xx = handled (Stripe stops retrying), 400 = rejected request,
 503/500 = temporary failure (Stripe retries with backoff for up to 3 days).
@@ -24,8 +28,9 @@ import logging
 from pipeline.auth.service import write_audit
 from pipeline.billing import store
 from pipeline.billing.config import BillingConfigError
-from pipeline.billing.entitlements import supplier_has_paid_access
+from pipeline.billing.entitlements import has_paid_access
 from pipeline.billing.gateway import BillingGatewayError, WebhookSignatureError, verify_webhook_signature
+from pipeline.billing.service import eligible_plan
 from pipeline.billing.states import LIVE_SUBSCRIPTION_STATES, BillingState, map_stripe_status
 
 log = logging.getLogger(__name__)
@@ -106,9 +111,18 @@ def _price_ids(sub: dict) -> list[str]:
     return out
 
 
+def _org_plan(conn, org_id):
+    org = conn.execute("SELECT id, slug, account_type FROM organizations WHERE id=?", (org_id,)).fetchone()
+    return eligible_plan(org) if org else None
+
+
 def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, event_type: str,
                         config, gateway) -> str:
     org_id = acct["organization_id"]
+    plan = _org_plan(conn, org_id)
+    if plan is None:
+        _audit(conn, org_id, "billing_webhook_rejected", success=False, reason="no_eligible_plan", stripe_event=event_type)
+        return "rejected:no_eligible_plan"
     sub = gateway.retrieve_subscription(subscription_id)  # authoritative state
     if _id(sub.get("customer")) != customer_id:
         _audit(conn, org_id, "billing_webhook_rejected", success=False, reason="customer_mismatch", stripe_event=event_type)
@@ -116,6 +130,14 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
     if bool(sub.get("livemode")) != config.livemode:
         _audit(conn, org_id, "billing_webhook_rejected", success=False, reason="mode_mismatch", stripe_event=event_type)
         return "rejected:mode_mismatch"
+    meta = sub.get("metadata") or {}
+    for key, expected in (("corridoriq_tenant_id", str(org_id)), ("corridoriq_account_type", plan.audience),
+                          ("corridoriq_plan", plan.key)):
+        if meta.get(key) is not None and str(meta[key]) != expected:
+            log.error("subscription metadata %s does not match organization %s; not applied", key, org_id)
+            _audit(conn, org_id, "billing_webhook_rejected", success=False, reason="metadata_mismatch",
+                   stripe_event=event_type)
+            return "rejected:metadata_mismatch"
 
     new_state = map_stripe_status(sub.get("status"))
     stored_id = acct["stripe_subscription_id"]
@@ -133,9 +155,16 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
             return "ignored:duplicate_subscription"
         return "ignored:other_subscription"
 
+    expected_price = config.price_id_for(plan)
     prices = _price_ids(sub)
-    price_ok = config.price_id in prices
-    was_paid = supplier_has_paid_access(conn, org_id, config)
+    # Exactly this organization's plan price, nothing else on the subscription.
+    price_ok = bool(expected_price) and bool(prices) and all(p == expected_price for p in prices)
+    mismatch_reason = None
+    if not price_ok:
+        other_plan = any(config.plan_for_price(p) not in (None, plan) for p in prices)
+        mismatch_reason = "plan_mismatch" if other_plan else "unknown_price"
+    stored_price = expected_price if price_ok else next((p for p in prices if p != expected_price), None)
+    was_paid = has_paid_access(conn, org_id, plan, config)
     period_end = _period_end(sub)
     cancel_flag = 1 if (sub.get("cancel_at_period_end") or sub.get("cancel_at")) else 0
     changed = (acct["billing_state"] != new_state.value or acct["current_period_end"] != period_end
@@ -143,7 +172,7 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
     store.update_account(
         conn, org_id,
         stripe_subscription_id=sub.get("id"),
-        stripe_price_id=config.price_id if price_ok else (prices[0] if prices else None),
+        stripe_price_id=stored_price,
         subscription_status=str(sub.get("status") or ""),
         billing_state=new_state.value,
         livemode=1 if sub.get("livemode") else 0,
@@ -153,13 +182,16 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
         checkout_expires_at=None,
         billing_updated_at=store.now_iso(),
     )
-    now_paid = supplier_has_paid_access(conn, org_id, config)
+    now_paid = has_paid_access(conn, org_id, plan, config)
 
     if not price_ok:
-        log.error("organization %s subscription has an unexpected price; access not granted", org_id)
-        _audit(conn, org_id, "billing_price_mismatch", success=False, stripe_event=event_type, state=new_state.value)
+        log.error("organization %s subscription price is not its %s plan price (%s); access not granted",
+                  org_id, plan.key, mismatch_reason)
+        _audit(conn, org_id, "billing_price_mismatch", success=False, stripe_event=event_type, state=new_state.value,
+               reason=mismatch_reason, plan=plan.key)
     if now_paid and not was_paid:
-        _audit(conn, org_id, "billing_subscription_activated", stripe_event=event_type, state=new_state.value)
+        _audit(conn, org_id, "billing_subscription_activated", stripe_event=event_type, state=new_state.value,
+               plan=plan.key)
     elif new_state is BillingState.CANCELED and stored_state is not BillingState.CANCELED:
         _audit(conn, org_id, "billing_subscription_canceled", stripe_event=event_type, state=new_state.value)
     elif event_type == "invoice.payment_failed":
@@ -167,7 +199,7 @@ def _apply_subscription(conn, acct, subscription_id: str, customer_id: str, even
     elif changed:
         _audit(conn, org_id, "billing_subscription_updated", stripe_event=event_type, state=new_state.value,
                paid_access=now_paid)
-    return "applied" if price_ok else "applied:price_mismatch"
+    return "applied" if price_ok else f"applied:{mismatch_reason}"
 
 
 def _handle(conn, event: dict, config, gateway) -> tuple[str, int | None]:
@@ -184,13 +216,20 @@ def _handle(conn, event: dict, config, gateway) -> tuple[str, int | None]:
         if obj.get("mode") != "subscription":
             return "ignored:not_subscription", org_id
         claimed = obj.get("client_reference_id")
-        meta_claim = (obj.get("metadata") or {}).get("corridoriq_tenant_id")
-        for claim in (claimed, meta_claim):
+        meta = obj.get("metadata") or {}
+        for claim in (claimed, meta.get("corridoriq_tenant_id")):
             if claim is not None and str(claim) != str(org_id):
                 log.error("checkout session tenant claim does not match its customer (organization %s)", org_id)
                 _audit(conn, org_id, "billing_webhook_rejected", success=False, reason="tenant_mismatch",
                        stripe_event=event_type)
                 return "rejected:tenant_mismatch", org_id
+        plan = _org_plan(conn, org_id)
+        if plan is None or (meta.get("corridoriq_account_type") not in (None, plan.audience)) \
+                or (meta.get("corridoriq_plan") not in (None, plan.key)):
+            log.error("checkout session plan/account metadata does not match organization %s", org_id)
+            _audit(conn, org_id, "billing_webhook_rejected", success=False, reason="metadata_mismatch",
+                   stripe_event=event_type)
+            return "rejected:metadata_mismatch", org_id
         if event_type == "checkout.session.expired":
             if acct["checkout_session_id"] == _id(obj.get("id")):
                 fields = {"checkout_session_id": None, "checkout_expires_at": None}

@@ -79,7 +79,9 @@ class StripeGateway:
                           options={"idempotency_key": idempotency_key})
 
     def retrieve_checkout_session(self, session_id: str) -> dict:
-        return self._call(self._client.v1.checkout.sessions.retrieve, session_id)
+        # line_items expanded so a resumed session can be checked against the plan's price.
+        return self._call(self._client.v1.checkout.sessions.retrieve, session_id,
+                          params={"expand": ["line_items"]})
 
     def create_portal_session(self, *, customer: str, return_url: str) -> dict:
         return self._call(self._client.v1.billing_portal.sessions.create,

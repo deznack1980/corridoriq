@@ -80,6 +80,10 @@ _ESTIMATOR = {
     "reports.view", "products.view", "products.quote",
 }
 
+# Contractor account owner: manages its own Contractor Pro subscription only.
+# Deliberately no supplier-intelligence, CRM or product permissions.
+_CONTRACTOR_OWNER = {"billing.manage"}
+
 ROLES: dict[str, dict] = {
     "admin": {
         "display_name": "Administrator",
@@ -111,6 +115,11 @@ ROLES: dict[str, dict] = {
         "description": "Fulfillment tasks; no contractor intelligence.",
         "permissions": _FULFILLMENT,
     },
+    "contractor_owner": {
+        "display_name": "Contractor Account Owner",
+        "description": "Contractor account: manages its own Contractor Pro subscription; no supplier intelligence.",
+        "permissions": _CONTRACTOR_OWNER,
+    },
 }
 
 # Post-login landing pages — backend is the source of truth.
@@ -119,6 +128,7 @@ LANDING_MANAGER = "team-dashboard.html"
 LANDING_REP = "sales-dashboard.html"
 LANDING_ESTIMATOR = "estimator-work-queue.html"
 LANDING_READONLY = "readonly-dashboard.html"
+LANDING_CONTRACTOR = "billing.html"
 
 
 def default_landing_page(roles: list[str] | None, permissions) -> str:
@@ -127,6 +137,8 @@ def default_landing_page(roles: list[str] | None, permissions) -> str:
     perms = set(permissions or [])
     if "admin" in role_set or "admin.system" in perms:
         return LANDING_ADMIN
+    if "contractor_owner" in role_set:
+        return LANDING_CONTRACTOR
     if "sales_manager" in role_set or "companies.assign" in perms:
         return LANDING_MANAGER
     if "estimator" in role_set:

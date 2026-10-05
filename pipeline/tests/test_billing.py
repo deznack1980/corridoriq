@@ -79,7 +79,10 @@ class FakeGateway:
         sid = f"cs_test_{self._n}"
         s = {"id": sid, "url": f"https://checkout.stripe.com/c/pay/{sid}", "customer": params["customer"],
              "mode": "subscription", "status": "open",
-             "expires_at": int(time.time()) + 24 * 3600}
+             "expires_at": int(time.time()) + 24 * 3600,
+             # what the real gateway returns when retrieving with expand=["line_items"]
+             "line_items": {"data": [{"price": {"id": li["price"]}, "quantity": li["quantity"]}
+                                     for li in params["line_items"]]}}
         self.sessions[sid] = s
         return s
 

@@ -12,18 +12,16 @@ import os
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-# Server-side catalogue: the only plan CorridorIQ sells today. The amount shown
-# to people comes from this label; billing logic only ever uses the price ID.
-PLAN_KEY = "founding_supply_partner"
-PLAN_NAME = "CorridorIQ Founding Supply Partner"
-PLAN_DISPLAY_PRICE = "$750/month"
+from pipeline.billing.plans import CONTRACTOR_PRO, FOUNDING_SUPPLY_PARTNER, PLANS, Plan
 
 ENV_ENABLED = "CORRIDORIQ_BILLING_ENABLED"
 ENV_SECRET_KEY = "STRIPE_SECRET_KEY"
 ENV_PUBLISHABLE_KEY = "STRIPE_PUBLISHABLE_KEY"
 ENV_WEBHOOK_SECRET = "STRIPE_WEBHOOK_SECRET"
-ENV_PRICE_ID = "STRIPE_FOUNDING_SUPPLY_PRICE_ID"
-ENV_LOOKUP_KEY = "STRIPE_FOUNDING_SUPPLY_PRICE_LOOKUP_KEY"
+ENV_PRICE_ID = FOUNDING_SUPPLY_PARTNER.price_env
+ENV_LOOKUP_KEY = FOUNDING_SUPPLY_PARTNER.lookup_env
+ENV_CONTRACTOR_PRICE_ID = CONTRACTOR_PRO.price_env
+ENV_CONTRACTOR_LOOKUP_KEY = CONTRACTOR_PRO.lookup_env
 ENV_PUBLIC_BASE_URL = "CORRIDORIQ_PUBLIC_BASE_URL"
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -50,9 +48,11 @@ def _mode_of(key: str, live_prefixes: tuple[str, ...], test_prefixes: tuple[str,
 class BillingConfig:
     enabled: bool
     production: bool
-    price_id: str
+    price_id: str                    # Founding Supply Partner (required)
     price_lookup_key: str
     public_base_url: str
+    contractor_price_id: str = ""    # Contractor Pro (optional until configured)
+    contractor_price_lookup_key: str = ""
     secret_key: str = field(repr=False, default="")
     publishable_key: str = field(repr=False, default="")
     webhook_secret: str = field(repr=False, default="")
@@ -85,6 +85,11 @@ class BillingConfig:
                 out.append(f"{ENV_PUBLISHABLE_KEY} and {ENV_SECRET_KEY} are from different modes")
         if not self.price_id.startswith("price_"):
             out.append(f"{ENV_PRICE_ID} is not a Stripe price ID")
+        if self.contractor_price_id:
+            if not self.contractor_price_id.startswith("price_"):
+                out.append(f"{ENV_CONTRACTOR_PRICE_ID} is not a Stripe price ID")
+            elif self.contractor_price_id == self.price_id:
+                out.append(f"{ENV_CONTRACTOR_PRICE_ID} must differ from {ENV_PRICE_ID}")
         out.extend(self._base_url_problems())
         return out
 
@@ -108,6 +113,34 @@ class BillingConfig:
         if self.mode == "live" and parts.scheme != "https":
             return [f"{ENV_PUBLIC_BASE_URL} must use https with live keys"]
         return []
+
+    # ---- per-plan prices (the server's only source of truth) ----------------
+    def price_id_for(self, plan: Plan) -> str:
+        return {FOUNDING_SUPPLY_PARTNER.key: self.price_id,
+                CONTRACTOR_PRO.key: self.contractor_price_id}.get(plan.key, "")
+
+    def lookup_key_for(self, plan: Plan) -> str:
+        return {FOUNDING_SUPPLY_PARTNER.key: self.price_lookup_key,
+                CONTRACTOR_PRO.key: self.contractor_price_lookup_key}.get(plan.key, "")
+
+    def plan_for_price(self, price_id) -> Plan | None:
+        """Which approved plan a Stripe price belongs to (None = unknown price)."""
+        for plan in PLANS.values():
+            configured = self.price_id_for(plan)
+            if configured and price_id == configured:
+                return plan
+        return None
+
+    def plan_problems(self, plan: Plan) -> list[str]:
+        out = list(self.problems())
+        if not self.price_id_for(plan).startswith("price_") and not any(plan.price_env in p for p in out):
+            out.append(f"{plan.price_env} is not set")
+        return out
+
+    def require_plan_ready(self, plan: Plan) -> "BillingConfig":
+        if self.plan_problems(plan):
+            raise BillingConfigError("billing is not configured for this plan")
+        return self
 
     def require_ready(self) -> "BillingConfig":
         if self.problems():
@@ -145,6 +178,8 @@ def load_config(environ=None) -> BillingConfig:
         production=get("CORRIDORIQ_ENV").lower() == "production",
         price_id=get(ENV_PRICE_ID),
         price_lookup_key=get(ENV_LOOKUP_KEY),
+        contractor_price_id=get(ENV_CONTRACTOR_PRICE_ID),
+        contractor_price_lookup_key=get(ENV_CONTRACTOR_LOOKUP_KEY),
         public_base_url=get(ENV_PUBLIC_BASE_URL),
         secret_key=get(ENV_SECRET_KEY),
         publishable_key=get(ENV_PUBLISHABLE_KEY),

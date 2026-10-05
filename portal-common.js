@@ -80,6 +80,10 @@
   function navForUser(portal) {
     if (portal === "contractor") return contractorNav();
     const roles = (CIQ.user && CIQ.user.roles) || [];
+    // Contractor account owners: their subscription only, no supplier screens.
+    if (roles.includes("contractor_owner") && !roles.includes("admin")) {
+      return [{ label: null, items: [{ href: "billing.html", label: "Contractor Pro", icon: "\u2605" }] }];
+    }
     const landing = (CIQ.user && CIQ.user.default_landing_page) || "sales-dashboard.html";
     const isAdmin = roles.includes("admin") || CIQ.hasPerm("admin.system");
     const isManager = roles.includes("sales_manager") || CIQ.hasPerm("companies.assign");
@@ -182,6 +186,7 @@
   function portalLabel(portal) {
     if (portal === "contractor") return `<div class="portal-label contractor"><i></i>Contractor portal · Preview</div>`;
     const roles = (CIQ.user && CIQ.user.roles) || [];
+    if (roles.includes("contractor_owner") && !roles.includes("admin")) return `<div class="portal-label contractor"><i></i>Contractor account</div>`;
     if (roles.includes("admin") || CIQ.hasPerm("admin.system")) return `<div class="portal-label"><i></i>Supplier portal · Admin</div>`;
     return `<div class="portal-label"><i></i>Supplier portal</div>`;
   }
@@ -203,7 +208,7 @@
     const r = (CIQ.user && CIQ.user.roles) || [];
     const map = { admin: "Administrator", sales_manager: "Sales Manager",
       sales_representative: "Sales Rep", estimator: "Estimator",
-      read_only: "Read Only", fulfillment_user: "Fulfillment" };
+      read_only: "Read Only", fulfillment_user: "Fulfillment", contractor_owner: "Contractor" };
     return map[r[0]] || (r[0] || "Employee");
   }
 

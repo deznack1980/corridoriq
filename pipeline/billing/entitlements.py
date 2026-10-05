@@ -3,9 +3,14 @@
     BILLING STATE (what Stripe says)  !=  ENTITLEMENT (what CorridorIQ grants)
 
 This module is the only place that turns billing state into access. Callers
-ask `supplier_has_paid_access(conn, organization_id)` or
-`entitlements_for(...)`; nothing else in CorridorIQ should compare Stripe
+ask `supplier_has_paid_access()`, `contractor_has_pro()` or
+`entitlements_for()`; nothing else in CorridorIQ should compare Stripe
 statuses. Every doubt resolves to "no paid access".
+
+A plan's entitlement is granted only to an organization whose account type is
+that plan's audience: a contractor subscription can never yield
+supplier_intelligence, and a supplier subscription can never yield
+contractor_pro.
 
 Not yet wired into any existing access check: current production access is
 unchanged until that is separately approved.
@@ -18,12 +23,17 @@ from datetime import datetime, timedelta, timezone
 
 from pipeline.billing import store
 from pipeline.billing.config import load_config
+from pipeline.billing.plans import (CONTRACTOR_PRO, CONTRACTOR_PRO_ENTITLEMENT, FOUNDING_SUPPLY_PARTNER, PLANS,
+                                    SUPPLIER_INTELLIGENCE, Plan)
 from pipeline.billing.states import PAID_ACCESS_STATES, BillingState
 
 log = logging.getLogger(__name__)
 
-SUPPLIER_INTELLIGENCE = "supplier_intelligence"
-PLAN_ENTITLEMENTS = frozenset({SUPPLIER_INTELLIGENCE})
+__all__ = ["SUPPLIER_INTELLIGENCE", "CONTRACTOR_PRO_ENTITLEMENT", "PLAN_ENTITLEMENTS", "has_paid_access",
+           "supplier_has_paid_access", "contractor_has_pro", "entitlements_for", "request_priority"]
+
+# Every entitlement any plan can grant.
+PLAN_ENTITLEMENTS = frozenset(p.entitlement for p in PLANS.values())
 
 # A renewal webhook is normally received within minutes of the period end.
 # If none has arrived this long after the recorded period end, stop granting
@@ -38,13 +48,16 @@ def _parse(ts):
         return None
 
 
-def supplier_has_paid_access(conn, organization_id, config=None, *, now=None) -> bool:
+def has_paid_access(conn, organization_id, plan: Plan, config=None, *, now=None) -> bool:
+    """True only if `plan` is paid for, by an organization eligible for it."""
     try:
         cfg = config or load_config()
-        if not cfg.price_id.startswith("price_") or cfg.mode is None:
+        price = cfg.price_id_for(plan)
+        if not price.startswith("price_") or cfg.mode is None:
             return False
-        org = conn.execute("SELECT is_active FROM organizations WHERE id=?", (organization_id,)).fetchone()
-        if org is None or not org["is_active"]:
+        org = conn.execute("SELECT is_active, account_type FROM organizations WHERE id=?",
+                           (organization_id,)).fetchone()
+        if org is None or not org["is_active"] or org["account_type"] != plan.audience:
             return False
         acct = store.get_account(conn, organization_id)
         if acct is None or not acct["stripe_subscription_id"]:
@@ -55,7 +68,7 @@ def supplier_has_paid_access(conn, organization_id, config=None, *, now=None) ->
             return False
         if state not in PAID_ACCESS_STATES:
             return False
-        if acct["stripe_price_id"] != cfg.price_id:
+        if acct["stripe_price_id"] != price:
             return False
         if acct["livemode"] is None or bool(acct["livemode"]) != cfg.livemode:
             return False
@@ -70,5 +83,21 @@ def supplier_has_paid_access(conn, organization_id, config=None, *, now=None) ->
         return False
 
 
+def supplier_has_paid_access(conn, organization_id, config=None, *, now=None) -> bool:
+    return has_paid_access(conn, organization_id, FOUNDING_SUPPLY_PARTNER, config, now=now)
+
+
+def contractor_has_pro(conn, organization_id, config=None, *, now=None) -> bool:
+    return has_paid_access(conn, organization_id, CONTRACTOR_PRO, config, now=now)
+
+
 def entitlements_for(conn, organization_id, config=None) -> frozenset[str]:
-    return PLAN_ENTITLEMENTS if supplier_has_paid_access(conn, organization_id, config) else frozenset()
+    cfg = config or load_config()
+    return frozenset(p.entitlement for p in PLANS.values() if has_paid_access(conn, organization_id, p, cfg))
+
+
+def request_priority(conn, organization_id, config=None) -> str:
+    """Integration point for contractor material requests: 'priority' for an
+    active Contractor Pro organization, otherwise 'standard'. A classification
+    only: it carries no response-time or service-level commitment."""
+    return "priority" if contractor_has_pro(conn, organization_id, config) else "standard"

@@ -1,9 +1,10 @@
-/* Supplier billing — Founding Supply Partner subscription.
- * The browser never decides price, amount, customer or entitlement: it asks
- * the server to start Checkout / open the Customer Portal and follows the
- * Stripe-hosted URL the server returns. Paid status shown here always comes
- * from /api/billing/status, which reflects signature-verified Stripe webhooks,
- * never from having landed on the success URL. */
+/* CorridorIQ billing — Founding Supply Partner (suppliers) and Contractor Pro
+ * (contractors). The server decides which single plan this organization may
+ * buy; the browser never decides plan, price, amount, customer or entitlement.
+ * It asks the server to start Checkout / open the Customer Portal and follows
+ * the Stripe-hosted URL the server returns. Paid status shown here always
+ * comes from /api/billing/status, which reflects signature-verified Stripe
+ * webhooks, never from having landed on the success URL. */
 (function () {
   const CHECKOUT_PREFIX = "https://checkout.stripe.com/";
   const PORTAL_PREFIX = "https://billing.stripe.com/";
@@ -21,6 +22,12 @@
     unknown: "Status unavailable",
   };
   const LIVE = ["incomplete", "trialing", "active", "past_due", "unpaid", "paused", "unknown"];
+  // Presentation per plan (the plan itself always comes from the server).
+  const COPY = {
+    founding_supply_partner: { access: "Supplier intelligence access", cta: "Become a Founding Partner" },
+    contractor_pro: { access: "Contractor Pro access", cta: "Upgrade to Contractor Pro" },
+  };
+  let lastPlan = null;
 
   function notice(html, kind) {
     document.getElementById("billingNotice").innerHTML =
@@ -35,35 +42,47 @@
 
   function render(s) {
     const e = CIQ.esc;
+    const box = document.getElementById("billing");
+    if (!s.plan) {
+      box.innerHTML = `<div class="card" style="max-width:640px"><div class="card-body">
+        <p class="muted">This organization is not billed through CorridorIQ.</p></div></div>`;
+      return;
+    }
+    lastPlan = s.plan;
+    const copy = COPY[s.plan.key] || { access: "Access", cta: "Subscribe" };
     const canSubscribe = s.can_manage && s.billable && s.available && !s.paid_access && !LIVE.includes(s.state);
     const canManage = s.can_manage && s.has_billing_account && s.available;
+    // "Active" is shown only when the server's verified state grants access.
+    const statusLabel = (s.state === "active" || s.state === "trialing") && !s.paid_access
+      ? STATE_LABEL.unknown : (STATE_LABEL[s.state] || STATE_LABEL.unknown);
+    const title = s.paid_access ? `${s.plan.short_name} — Active` : s.plan.name;
     const rows = [
       ["Plan", e(s.plan.name)],
       ["Price", e(s.plan.display_price)],
-      ["Status", e(STATE_LABEL[s.state] || STATE_LABEL.unknown)],
-      ["Supplier intelligence access", s.paid_access ? "Included" : "Not active"],
+      ["Status", e(statusLabel)],
+      [copy.access, s.paid_access ? "Included" : "Not active"],
     ];
     if (s.current_period_end && LIVE.includes(s.state)) {
       rows.push([s.cancel_at_period_end ? "Ends" : "Renews", e(fmtDate(s.current_period_end))]);
     }
     let actions = "";
     if (canSubscribe) {
-      actions += `<button class="btn btn-primary" id="subscribeBtn">Become a Founding Partner — ${e(s.plan.display_price)}</button>`;
+      actions += `<button class="btn btn-primary" id="subscribeBtn">${e(copy.cta)} — ${e(s.plan.display_price)}</button>`;
     }
     if (canManage) {
       actions += `<button class="btn btn-ghost" id="portalBtn">Manage Billing</button>`;
     }
     let note = "";
-    if (!s.billable) note = "This organization is not billed through CorridorIQ.";
-    else if (!s.can_manage) note = "Ask your organization's manager to manage billing.";
+    if (!s.can_manage) note = "Ask your organization's account owner to manage billing.";
     else if (!s.available) note = "Billing is temporarily unavailable. Please try again later.";
     if (s.mode === "test") note += (note ? " " : "") + "Stripe test mode — no real charges.";
 
-    document.getElementById("billing").innerHTML = `
+    box.innerHTML = `
       <div class="card" style="max-width:640px">
-        <div class="card-head"><h3>${e(s.plan.name)}</h3></div>
+        <div class="card-head"><h3>${e(title)}</h3></div>
         <div class="card-body">
-          <dl style="display:grid;grid-template-columns:auto 1fr;gap:8px 18px;margin:0">${rows.map(([k, v]) => `<dt class="muted">${k}</dt><dd style="margin:0;font-weight:600">${v}</dd>`).join("")}</dl>
+          ${s.plan.tagline ? `<p style="margin:0 0 14px">${e(s.plan.tagline)}</p>` : ""}
+          <dl style="display:grid;grid-template-columns:auto 1fr;gap:8px 18px;margin:0">${rows.map(([k, v]) => `<dt class="muted">${e(k)}</dt><dd style="margin:0;font-weight:600">${v}</dd>`).join("")}</dl>
           ${actions ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:16px">${actions}</div>` : ""}
           ${note ? `<p class="muted" style="margin-top:12px">${e(note)}</p>` : ""}
           <p class="muted" style="margin-top:12px">Payments are processed by Stripe. CorridorIQ never sees or stores card details.</p>
@@ -98,13 +117,17 @@
     }
   }
 
+  function planName() {
+    return CIQ.esc((lastPlan && lastPlan.short_name) || "CorridorIQ");
+  }
+
   async function confirmAfterCheckout() {
-    notice("Your subscription is being confirmed. This page updates when Stripe confirms the payment — it can take a minute.");
+    notice(`Your ${planName()} subscription is being confirmed. This page updates when Stripe confirms the payment — it can take a minute.`);
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const s = await load();
       if (s && s.paid_access) {
-        notice("Thank you — your Founding Supply Partner subscription is confirmed.");
+        notice(`Thank you — your ${planName()} subscription is confirmed.`);
         return;
       }
     }
