@@ -10,6 +10,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from agents.ceo.analytics.health import evaluate_system_health, incomplete_health, load_health_record
 from agents.ceo.analytics.publish import read_status, required_display_ids
 
 MISSING_MESSAGE = "No CEO Morning Brief is available yet."
@@ -38,6 +39,7 @@ def load_owner_brief_view(*, reports_conn: sqlite3.Connection, directory: Path) 
             "sections": [],
             "latest_refresh": _public_run(latest_run),
             "latest_attempt": _public_attempt(status.get("latest_attempt")),
+            "health": resolve_health(directory, reports_conn),
         }
     provenance = brief["provenance"]
     current, notice = _currency(provenance, latest_run, status.get("latest_attempt"), source)
@@ -53,7 +55,40 @@ def load_owner_brief_view(*, reports_conn: sqlite3.Connection, directory: Path) 
         "sections": brief["display"],
         "latest_refresh": _public_run(latest_run),
         "latest_attempt": _public_attempt(status.get("latest_attempt")),
+        "health": resolve_health(directory, reports_conn),
     }
+
+
+def resolve_health(directory: Path, reports_conn: sqlite3.Connection) -> dict:
+    """Owner health for the page. A malformed file is not treated as healthy."""
+    record, notice = load_health_record(directory)
+    if record is None:
+        live = _live_health(reports_conn)
+        if live is None:
+            live = incomplete_health(checked_at="", error="no_health_record")
+        else:
+            live = dict(live)
+        if notice:
+            live["artifact_notice"] = notice
+            live["current"] = False
+        else:
+            live["current"] = True
+        return live
+    record = dict(record)
+    record["artifact_notice"] = notice
+    record["current"] = notice is None
+    return record
+
+
+def _live_health(reports_conn: sqlite3.Connection) -> dict | None:
+    try:
+        row = reports_conn.execute("PRAGMA database_list").fetchone()
+    except sqlite3.Error:
+        return None
+    db_file = row[2] if row is not None else None
+    if not db_file:
+        return None
+    return evaluate_system_health(Path(db_file))
 
 
 def _latest_refresh(conn: sqlite3.Connection):

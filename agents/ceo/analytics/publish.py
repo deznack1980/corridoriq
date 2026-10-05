@@ -12,6 +12,7 @@ from pathlib import Path
 
 from agents.ceo.analytics.brief import DISPLAY_SECTIONS, build_daily_brief, write_brief
 from agents.ceo.analytics.guard import AnalyticsError
+from agents.ceo.analytics.health import apply_brief_publication, evaluate_system_health, write_health
 from agents.ceo.analytics.scope import owner_scope
 from agents.ceo.paths import output_dir
 
@@ -31,6 +32,7 @@ def publish_owner_brief(*, db_path: Path, refresh: dict) -> dict:
     ``refresh`` is the committed run summary. This function never raises.
     """
     directory = intelligence_dir()
+    health = evaluate_system_health(Path(db_path), refresh=refresh)
     attempt = {
         "refresh_run_id": refresh.get("run_id"),
         "refresh_status": refresh.get("status"),
@@ -43,8 +45,10 @@ def publish_owner_brief(*, db_path: Path, refresh: dict) -> dict:
     if refresh.get("status") != "succeeded" or refresh.get("run_id") is None:
         attempt["brief_status"] = "skipped"
         attempt["error"] = "refresh did not succeed"
+        health = apply_brief_publication(health, status="skipped")
+        write_health(health, directory)
         _write_status(directory, attempt, valid=None)
-        return {"ok": False, "brief_status": "skipped"}
+        return {"ok": False, "brief_status": "skipped", "health": health}
     try:
         completed = str(refresh.get("completed_at") or "")
         as_of = completed[:10] if len(completed) >= 10 else _now()[:10]
@@ -63,7 +67,11 @@ def publish_owner_brief(*, db_path: Path, refresh: dict) -> dict:
             "schema": brief.get("schema"),
         }
         history_key = f"refresh-{int(refresh['run_id']):06d}"
+        health = apply_brief_publication(health, status="succeeded")
+        brief["health"] = health
+        brief["markdown"] = (brief.get("markdown") or "") + "\nSYSTEM HEALTH\n" + health["label"] + "\n"
         paths = write_brief(brief, directory, history_key=history_key)
+        paths.update(write_health(health, directory))
         attempt["brief_status"] = "succeeded"
         attempt["generated_at"] = brief.get("generated_at")
         attempt["data_as_of"] = brief.get("as_of")
@@ -78,12 +86,14 @@ def publish_owner_brief(*, db_path: Path, refresh: dict) -> dict:
             "history_key": history_key,
         }
         _write_status(directory, attempt, valid=valid)
-        return {"ok": True, "brief_status": "succeeded", "paths": paths}
+        return {"ok": True, "brief_status": "succeeded", "paths": paths, "health": health}
     except Exception as exc:  # noqa: BLE001 - refresh status must stay succeeded
         attempt["brief_status"] = "failed"
         attempt["error"] = _safe_error(exc)
+        health = apply_brief_publication(health, status="failed", error=attempt["error"])
+        write_health(health, directory)
         _write_status(directory, attempt, valid=None)
-        return {"ok": False, "brief_status": "failed", "error": attempt["error"]}
+        return {"ok": False, "brief_status": "failed", "error": attempt["error"], "health": health}
 
 
 def read_status(directory: Path) -> dict:

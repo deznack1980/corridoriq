@@ -317,8 +317,47 @@ def test_owner_can_read_the_brief_and_other_roles_cannot(http_server, tmp_path):
     # Align the fixture with the inserted row.
     _write(directory, _brief(run_id=run_id, text="Owner market brief"))
 
-    assert _req(port, "GET", "/api/admin/ceo-morning-brief")[0] == 401
-    assert _req(port, "GET", "/api/admin/ceo-morning-brief", cookie="corridoriq_pilot_session=contractor-token")[0] == 401
+    (directory / "latest_health_status.json").write_text(json.dumps({
+        "schema": "corridoriq.ceo.health.v1",
+        "overall_status": "critical",
+        "label": "CRITICAL — ACTION REQUIRED",
+        "checked_at": "2026-10-05T12:00:00+00:00",
+        "data_as_of": "2026-10-05",
+        "refresh_run_id": run_id,
+        "scope": {"kind": "owner", "organization_id": None},
+        "execute": False,
+        "checks": [],
+        "incidents": [{
+            "id": "morning_refresh",
+            "severity": "critical",
+            "component": "morning_refresh",
+            "source": "morning_refresh",
+            "detected_at": "2026-10-05T12:00:00+00:00",
+            "last_known_healthy_at": None,
+            "fact": "PLANTED-HEALTH-INCIDENT",
+            "claim_class": "FACT",
+            "impact": "The newest refresh failed.",
+            "recommended_action": "Review the refresh.",
+            "automatic_remediation_permitted": False,
+            "rule": "The newest morning_refresh row decides refresh health.",
+        }],
+        "owner_alert_required": True,
+        "alert_reason": "At least one critical check failed.",
+        "alert_severity": "critical",
+        "incident_count": 1,
+        "components": {},
+    }), encoding="utf-8")
+
+    unauth_status, unauth_body, _ = _req(port, "GET", "/api/admin/ceo-morning-brief")
+    assert unauth_status == 401
+    assert "PLANTED-HEALTH-INCIDENT" not in json.dumps(unauth_body)
+    assert "overall_status" not in json.dumps(unauth_body)
+    contractor_status, contractor_body, _ = _req(
+        port, "GET", "/api/admin/ceo-morning-brief", cookie="corridoriq_pilot_session=contractor-token",
+    )
+    assert contractor_status == 401
+    assert "PLANTED-HEALTH-INCIDENT" not in json.dumps(contractor_body)
+    assert "overall_status" not in json.dumps(contractor_body)
     for email, password in (
         ("rep@corridoriq.com", "RepPass123"),
         ("manager@corridoriq.com", "MgrPass123"),
@@ -328,7 +367,11 @@ def test_owner_can_read_the_brief_and_other_roles_cannot(http_server, tmp_path):
         cookie = _login(port, email, password)
         status, body, _ = _req(port, "GET", "/api/admin/ceo-morning-brief", cookie=cookie)
         assert status == 403, email
-        assert "Owner market brief" not in json.dumps(body)
+        dumped = json.dumps(body)
+        assert "Owner market brief" not in dumped
+        assert "PLANTED-HEALTH-INCIDENT" not in dumped
+        assert "overall_status" not in dumped
+        assert "incidents" not in dumped
 
     owner = _login(port, "owner@corridoriq.com", "OwnerPass123")
     status, body, _ = _req(port, "GET", "/api/admin/ceo-morning-brief?organization=2", cookie=owner)
@@ -336,5 +379,8 @@ def test_owner_can_read_the_brief_and_other_roles_cannot(http_server, tmp_path):
     assert body["available"] is True
     assert body["execute"] is False
     assert body["provenance"]["scope"]["organization_id"] is None
+    assert body["health"]["scope"]["organization_id"] is None
+    assert body["health"]["execute"] is False
+    assert "PLANTED-HEALTH-INCIDENT" in json.dumps(body["health"])
     assert "ORG2-SECRET" not in json.dumps(body)
     assert any(item["text"] == "Owner market brief" for item in body["sections"])

@@ -9,6 +9,9 @@ v0.2 company state, maturity, the stakeholder ledger, approval gates, cloud read
 - `CEO_AGENT_CLOUD_READINESS.md`
 - `CEO_AGENT_APPROVAL_GATES.md`
 - `CEO_AGENT_STATE_SCHEMA.md`
+- `CEO_AGENT_SYSTEM_HEALTH.md`
+
+Morning system health is a deterministic check in the morning-brief cycle. A model cannot mark a failed check healthy, and the check does not repair anything.
 
 The v0.1 decision engine, morning operator, retrieval, and read-only database path are still the execution core.
 

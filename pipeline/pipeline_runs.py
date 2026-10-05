@@ -295,15 +295,15 @@ def run_morning_refresh(
     _write_log(summary)
 
     log(f"[morning_refresh] status={status} in {duration}s")
-    if status == "succeeded":
-        _publish_ceo_morning_brief(conn, summary)
+    _publish_ceo_morning_brief(conn, summary)
     if own_conn:
         conn.close()
     return summary
 
 
 def _publish_ceo_morning_brief(conn: sqlite3.Connection, summary: dict) -> None:
-    """Downstream of a committed successful refresh. Failures stay off the run row."""
+    """Downstream of a committed refresh. A brief is published only after success.
+    Health is recorded for every terminal status. Failures stay off the run row."""
     try:
         row = conn.execute("PRAGMA database_list").fetchone()
         db_file = row[2] if row is not None else None
