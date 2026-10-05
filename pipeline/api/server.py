@@ -267,7 +267,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return {}
 
     def _client(self):
-        ip = self.client_address[0] if self.client_address else None
+        from pipeline.api.client_address import resolve_client_ip
+        peer = self.client_address[0] if self.client_address else None
+        ip = resolve_client_ip(peer, self.headers)
         ua = self.headers.get("User-Agent")
         return ip, ua
 

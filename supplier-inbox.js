@@ -13,7 +13,7 @@
       <li><button class="row" type="button" data-id="${P.esc(r.share_id)}">
         <span class="r-t">${P.esc(r.contractor_name)} — ${P.esc(r.title)}</span>
         <span class="r-m">${r.reference ? `<span>${P.esc(r.reference)}</span>` : ""}<span>${r.line_count} lines</span>
-          <span>${P.esc(when(r.sent_at))}</span>${chip(r.status)}</span>
+          <span>${P.esc(when(r.sent_at))}</span>${r.priority === "priority" ? '<span class="chip new">Priority</span>' : '<span class="chip">Standard</span>'}${chip(r.status)}</span>
       </button></li>`).join("");
     $("empty").hidden = items.length > 0;
     document.querySelectorAll("#list [data-id]").forEach((b) => b.addEventListener("click", () => open(b.dataset.id)));

@@ -40,10 +40,11 @@ class Client:
         self.port = port
         self.cookie = None
         self.staff_cookie = None
+        self.last_pilot_cookie = None
 
-    def call(self, method, path, body=None, *, ctype="application/json"):
+    def call(self, method, path, body=None, *, ctype="application/json", headers=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
-        headers = {}
+        headers = dict(headers or {})
         cookies = [c for c in (self.cookie, self.staff_cookie) if c]
         if cookies:
             headers["Cookie"] = "; ".join(cookies)
@@ -56,6 +57,7 @@ class Client:
         raw = res.read()
         for h, v in res.getheaders():
             if h.lower() == "set-cookie" and v.startswith(PILOT_COOKIE + "="):
+                self.last_pilot_cookie = v
                 val = v.split(";", 1)[0]
                 self.cookie = None if val.endswith("=") else val
         conn.close()
@@ -892,6 +894,81 @@ def test_store_tables_carry_tenant_and_no_supplier_fields(world):
     assert c.execute("SELECT tenant_id, tenant_type FROM tenant_meta").fetchone() == (tid, "contractor")
     assert {r[0] for r in c.execute("SELECT DISTINCT tenant_id FROM material_request_lines")} == {tid}
     assert c.execute("SELECT request_id FROM material_requests").fetchone()[0] == req["request_id"]
+
+
+def test_priority_sorts_ahead_of_an_earlier_standard_request(env, monkeypatch):
+    _use_test_billing(monkeypatch)
+    standard, me_s = signup(env, "std-order@example.test", "Standard Order Co", code=env["code_a"])
+    pro_email = "pro-order@example.test"
+    _contractor_billing(env, pro_email)
+    priority, me_p = signup(env, pro_email, "Priority Order Co", code=env["code_a"])
+    first = new_request(standard, "Earlier standard")
+    assert send(standard, first, me_s["connections"][0]["connection_id"])[0] == 200
+    ahead = new_request(priority, "Later priority")
+    assert ahead["priority"] == "priority"
+    assert send(priority, ahead, me_p["connections"][0]["connection_id"])[0] == 200
+    later = new_request(standard, "Later standard")
+    assert send(standard, later, me_s["connections"][0]["connection_id"])[0] == 200
+    # Force a send-time conflict: the priority request is newer than both standard requests.
+    stored = db(env)
+    stored.execute("UPDATE request_shares SET sent_at='2026-10-05T12:00:02+00:00' WHERE title='Later priority'")
+    stored.execute("UPDATE request_shares SET sent_at='2026-10-05T12:00:01+00:00' WHERE title='Earlier standard'")
+    stored.execute("UPDATE request_shares SET sent_at='2026-10-05T12:00:03+00:00' WHERE title='Later standard'")
+    stored.commit()
+    stored.close()
+    supplier, _ = login(env, "inbox-a@example.test")
+    items = supplier.call("GET", "/api/pilot/supplier/requests")[1]["items"]
+    assert [item["title"] for item in items] == ["Later priority", "Earlier standard", "Later standard"]
+    assert [item["priority"] for item in items] == ["priority", "standard", "standard"]
+    other = login(env, "inbox-b@example.test")[0]
+    assert other.call("GET", "/api/pilot/supplier/requests")[1]["items"] == []
+
+
+def test_supplier_inbox_list_labels_priority_and_standard():
+    text = (REPO / "supplier-inbox.js").read_text(encoding="utf-8")
+    listing = text.split("function renderDetail")[0]
+    assert 'chip new">Priority' in listing
+    assert 'chip">Standard' in listing
+
+
+def test_trusted_proxy_uses_cloudflare_ip_and_a_direct_request_cannot_spoof(env, monkeypatch):
+    from pipeline.api.client_address import resolve_client_ip
+
+    secret = "unit-proxy-secret"
+    monkeypatch.setenv("CORRIDORIQ_TRUSTED_PROXY_SECRET", secret)
+    trusted = {"CF-Connecting-IP": "203.0.113.10", "X-CorridorIQ-Proxy-Secret": secret}
+    assert resolve_client_ip("127.0.0.1", trusted) == "203.0.113.10"
+    forged = {"CF-Connecting-IP": "203.0.113.10", "X-Forwarded-For": "198.51.100.4"}
+    assert resolve_client_ip("127.0.0.1", forged) == "127.0.0.1"
+    assert resolve_client_ip("198.51.100.8", trusted) == "198.51.100.8"
+    assert resolve_client_ip("127.0.0.1", {"CF-Connecting-IP": "not an ip", "X-CorridorIQ-Proxy-Secret": secret}) == "127.0.0.1"
+    pilot_api._hits.clear()
+    c = client(env)
+    for _ in range(10):
+        status, _ = c.call("POST", "/api/pilot/auth/signup", {"email": "x"}, headers=trusted)
+        assert status != 429
+    assert c.call("POST", "/api/pilot/auth/signup", {"email": "x"}, headers=trusted)[0] == 429
+    other = {"CF-Connecting-IP": "203.0.113.11", "X-CorridorIQ-Proxy-Secret": secret}
+    assert c.call("POST", "/api/pilot/auth/signup", {"email": "x"}, headers=other)[0] != 429
+    # A forged address without the secret shares the loopback bucket.
+    spoofed = {"CF-Connecting-IP": "203.0.113.99"}
+    for _ in range(10):
+        assert c.call("POST", "/api/pilot/auth/login", {"email": "nobody@example.test", "password": "wrong-pass"},
+                      headers=spoofed)[0] != 429
+    moved = {"CF-Connecting-IP": "203.0.113.100"}
+    assert c.call("POST", "/api/pilot/auth/login", {"email": "nobody@example.test", "password": "wrong-pass"},
+                  headers=moved)[0] != 429
+    for _ in range(20):
+        c.call("POST", "/api/pilot/auth/login", {"email": "nobody@example.test", "password": "wrong-pass"},
+               headers=spoofed)
+    assert c.call("POST", "/api/pilot/auth/login", {"email": "nobody@example.test", "password": "wrong-pass"},
+                  headers=moved)[0] == 429
+
+
+def test_production_pilot_cookie_is_secure(env, monkeypatch):
+    monkeypatch.setattr("pipeline.config.settings.AUTH_PRODUCTION", True)
+    c, _ = signup(env, "secure-cookie@example.test", "Secure Cookie Co", code=env["code_a"])
+    assert "Secure" in c.last_pilot_cookie and "HttpOnly" in c.last_pilot_cookie
 
 
 def test_join_route_serves_the_join_page_only_for_valid_codes(env):

@@ -256,3 +256,18 @@ def test_linked_subpages_match_the_pilot_and_have_no_dead_anchors():
     con = (REPO / "for-contractors.html").read_text(encoding="utf-8")
     callout = con[con.index('id="early-access"'):con.index("</section>", con.index('id="early-access"'))]
     assert 'href="login.html"' not in callout  # the portal login is for employees, not contractors
+
+
+def test_contractor_sign_in_reaches_the_contractor_account_not_staff_login():
+    landing = _html()
+    contractors = (REPO / "for-contractors.html").read_text(encoding="utf-8")
+    suppliers = (REPO / "for-suppliers.html").read_text(encoding="utf-8")
+    assert 'href="contractor-account.html?mode=signin"' in contractors
+    assert 'href="login.html"' not in contractors
+    assert 'href="for-contractors.html"' in landing
+    assert 'href="login.html"' in landing  # staff portal login stays separate
+    assert "contractor-account" not in landing
+    assert 'href="login.html"' in suppliers
+    assert 'href="contractor-account.html?mode=signin"' not in suppliers
+    target, _ = static_target("/contractor-account.html")
+    assert target is not None and target.is_file()

@@ -426,9 +426,12 @@ def _share_out(r) -> dict:
 
 def inbox(pconn, principal) -> list[dict]:
     accounts.require_supplier(principal)
-    rows = pconn.execute("SELECT s.*, (SELECT COUNT(*) FROM request_share_lines l WHERE l.share_id=s.share_id) AS n "
-                         "FROM request_shares s WHERE supplier_tenant_id=? ORDER BY sent_at DESC",
-                         (principal.tenant_id,)).fetchall()
+    rows = pconn.execute(
+        "SELECT s.*, (SELECT COUNT(*) FROM request_share_lines l WHERE l.share_id=s.share_id) AS n "
+        "FROM request_shares s WHERE supplier_tenant_id=? "
+        "ORDER BY CASE WHEN s.priority='priority' THEN 0 ELSE 1 END, s.sent_at ASC, s.share_id ASC",
+        (principal.tenant_id,),
+    ).fetchall()
     return [dict(_share_out(r), line_count=r["n"]) for r in rows]
 
 

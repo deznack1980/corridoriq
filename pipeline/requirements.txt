@@ -5,3 +5,5 @@ python-dateutil>=2.8
 openpyxl>=3.1
 reportlab>=4.0
 argon2-cffi>=23.1
+# Stripe SDK used only by pipeline.billing.gateway. Installing it does not enable billing.
+stripe>=15.3

@@ -7,6 +7,7 @@ an explicit rule. automatic_remediation_permitted is false on every incident.
 from __future__ import annotations
 
 import json
+import os
 import statistics
 from datetime import datetime, timezone
 from pathlib import Path
@@ -166,7 +167,7 @@ def _evaluate(db_path: Path | None, *, refresh: dict, checked_at: str, billing_c
             rule="Database health requires a readable SQLite file. No repair is attempted.",
             evidence={"reason": "database unavailable"},
         )
-        return _finalize([unread, _billing(None, config=billing_config, checked_at=checked_at)],
+        return _finalize([unread, _production_runtime(), _billing(None, config=billing_config, checked_at=checked_at)],
                          checked_at=checked_at, data_as_of=None, refresh_run_id=refresh.get("run_id"))
     try:
         conn = open_analytics(Path(db_path))
@@ -181,7 +182,7 @@ def _evaluate(db_path: Path | None, *, refresh: dict, checked_at: str, billing_c
             rule="Database health requires a readable SQLite file. No repair is attempted.",
             evidence={"reason": "database unavailable"},
         )
-        return _finalize([unread, _billing(None, config=billing_config, checked_at=checked_at)],
+        return _finalize([unread, _production_runtime(), _billing(None, config=billing_config, checked_at=checked_at)],
                          checked_at=checked_at, data_as_of=None, refresh_run_id=refresh.get("run_id"))
     try:
         checks = [
@@ -191,6 +192,7 @@ def _evaluate(db_path: Path | None, *, refresh: dict, checked_at: str, billing_c
             _feeds(conn, checked_at),
             _downstream(conn, checked_at),
             _application(conn),
+            _production_runtime(),
             _billing(conn, config=billing_config, checked_at=checked_at),
         ]
     finally:
@@ -609,6 +611,53 @@ _BILLING_INCIDENT_FIELDS = ("wrong_plan_payment_last_30d", "duplicate_subscripti
                             "webhook_rejected_last_30d")
 
 
+def _production_runtime() -> dict:
+    """Read-only launch gate. Does not create a pilot root or change configuration."""
+    production = os.environ.get("CORRIDORIQ_ENV", "").strip().lower() == "production"
+    raw = os.environ.get("CORRIDORIQ_PILOT_ROOT", "").strip()
+    configured = bool(raw)
+    available = False
+    misconfigured = False
+    if configured:
+        try:
+            from pipeline.pilot.platform import validate_root
+
+            path = validate_root(raw)
+        except Exception:  # noqa: BLE001 - fail closed on an unusable root
+            misconfigured = True
+        else:
+            available = path.is_dir()
+            misconfigured = path.exists() and not available
+    problems = []
+    if not production:
+        problems.append("environment_not_production")
+    if not configured:
+        problems.append("pilot_disabled")
+    elif misconfigured:
+        problems.append("pilot_misconfigured")
+    elif not available:
+        problems.append("pilot_root_unavailable")
+    status = "healthy" if not problems else "critical"
+    return _check(
+        "production_runtime",
+        "launch",
+        status,
+        critical=True,
+        claim_class="FACT",
+        summary=("Production environment and the pilot root are available." if not problems
+                 else "Production launch checks failed: " + ", ".join(problems) + "."),
+        rule=("A production process reports healthy only when CORRIDORIQ_ENV is production and the "
+              "pilot root is set, is a directory, and is not the intelligence database. "
+              "This check does not create the directory or change configuration."),
+        evidence={
+            "environment_production": production,
+            "pilot_configured": configured,
+            "pilot_root_available": available,
+            "problems": problems,
+        },
+    )
+
+
 def _billing(conn=None, *, config=None, checked_at: str | None = None) -> dict:
     """Consume the billing health contract. Read-only, no Stripe call, no billing mutation."""
     try:
@@ -790,6 +839,8 @@ def _impact(item: dict) -> str:
         return "The owner would be looking at an older brief, or at no brief."
     if item["id"] == "application":
         return "Sign-in and the admin brief cannot be assumed to be available."
+    if item["id"] == "production_runtime":
+        return "The public pilot cannot be treated as a production launch while this check is failing."
     if item["id"] == "billing":
         return "Paid access and Contractor Pro priority may not match Stripe until this is reviewed."
     return "The owner should review this check before treating the morning as normal."
@@ -802,6 +853,8 @@ def _action(item: dict) -> str:
         return "Restore access from the existing operational process. This check will not repair the file."
     if item["id"] == "brief_publication":
         return "Read the brief failure status. Keep the previous valid brief labeled as older."
+    if item["id"] == "production_runtime":
+        return "Correct the process environment and the pilot root. This check will not create either."
     if item["id"] == "billing":
         return ("Review the admin billing health and billing incidents views. Refunds and cancellations "
                 "are a manual owner action in Stripe. Automatic remediation is off.")
@@ -815,6 +868,7 @@ def _components(checks: list[dict]) -> dict:
         "feeds": ["feeds"],
         "downstream": ["downstream_analytics", "brief_publication"],
         "application": ["application"],
+        "launch": ["production_runtime"],
         "billing": ["billing"],
     }
     by_id = {item["id"]: item for item in checks}

@@ -466,6 +466,46 @@ def test_health_artifact_has_no_secrets_and_never_permits_remediation(tmp_path, 
     assert notice
 
 
+def test_production_runtime_blocks_a_non_production_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORRIDORIQ_ENV", "development")
+    health = _eval(_healthy_db(tmp_path))
+    check = _one(health, "production_runtime")
+    assert check["status"] == "critical" and check["critical"] is True
+    assert "environment_not_production" in check["evidence"]["problems"]
+    assert health["overall_status"] == "critical"
+    assert health["execute"] is False
+
+
+def test_production_runtime_blocks_a_disabled_pilot(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORRIDORIQ_ENV", "production")
+    monkeypatch.delenv("CORRIDORIQ_PILOT_ROOT", raising=False)
+    health = _eval(_healthy_db(tmp_path))
+    check = _one(health, "production_runtime")
+    assert "pilot_disabled" in check["evidence"]["problems"]
+    assert health["overall_status"] == "critical"
+
+
+def test_production_runtime_blocks_an_unavailable_pilot_root(tmp_path, monkeypatch):
+    missing = tmp_path / "missing-pilot-root"
+    monkeypatch.setenv("CORRIDORIQ_ENV", "production")
+    monkeypatch.setenv("CORRIDORIQ_PILOT_ROOT", str(missing))
+    health = _eval(_healthy_db(tmp_path))
+    check = _one(health, "production_runtime")
+    assert "pilot_root_unavailable" in check["evidence"]["problems"]
+    assert health["overall_status"] == "critical"
+    assert not missing.exists()
+
+
+def test_production_runtime_blocks_a_misconfigured_pilot_root(tmp_path, monkeypatch):
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("CORRIDORIQ_ENV", "production")
+    monkeypatch.setenv("CORRIDORIQ_PILOT_ROOT", str(blocked))
+    health = _eval(_healthy_db(tmp_path))
+    assert "pilot_misconfigured" in _one(health, "production_runtime")["evidence"]["problems"]
+    assert health["overall_status"] == "critical"
+
+
 def test_owner_alert_rules():
     cases = {
         "healthy": False,
