@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — My dashboard</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#0b1729" />
+  <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/pilot.css" />
+</head>
+<body class="pilot">
+  <header class="pbar"><div class="in">
+    <a class="pbrand" href="/contractor-home.html"><img src="/assets/brand/corridoriq-mark.svg" alt="" /><div><div class="t">CorridorIQ</div><div class="s" id="barBusiness"></div></div></a>
+    <span class="sp"></span>
+    <div class="lang-switch"></div>
+    <button class="link-btn" type="button" id="signOut" data-i18n="sign_out"></button>
+  </div></header>
+
+  <main class="pmain" id="main" hidden>
+    <h1 class="ptitle" id="hello"></h1>
+    <div class="grid2">
+      <div>
+        <a class="btn primary block" href="/contractor-request.html" style="margin-bottom:16px" data-i18n="new_request"></a>
+        <section class="card">
+          <h2 data-i18n="my_requests"></h2>
+          <ul class="rlist" id="requests"></ul>
+          <p class="muted" id="noRequests" data-i18n="no_requests" hidden></p>
+        </section>
+      </div>
+      <div>
+        <section class="card">
+          <h2 data-i18n="connections"></h2>
+          <ul class="rlist" id="connections"></ul>
+          <p class="muted" id="noConnections" data-i18n="no_connections" hidden></p>
+        </section>
+        <section class="card">
+          <h2 data-i18n="account"></h2>
+          <dl class="kv" id="account"></dl>
+          <details id="editProfile" style="margin-top:14px" hidden>
+            <summary data-i18n="edit_profile" style="cursor:pointer;font-weight:600;min-height:36px"></summary>
+            <form id="profileForm" style="margin-top:12px" novalidate>
+              <div class="msg" id="profileMsg" role="status" hidden></div>
+              <div class="field"><label for="pfBusiness" data-i18n="f_business"></label><input id="pfBusiness" type="text" maxlength="200" /></div>
+              <div class="field"><label for="pfPhone" data-i18n="f_phone"></label><input id="pfPhone" type="tel" maxlength="25" /></div>
+              <button class="btn ghost small" type="submit" data-i18n="save"></button>
+            </form>
+          </details>
+        </section>
+        <p class="muted" data-i18n="privacy_line"></p>
+      </div>
+    </div>
+  </main>
+  <script src="/pilot-i18n.js"></script>
+  <script src="/pilot-common.js"></script>
+  <script src="/contractor-home.js"></script>
+</body>
+</html>

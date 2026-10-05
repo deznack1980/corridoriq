@@ -15,9 +15,9 @@
 | ROC | Arizona registrar license data used for identity validation. |
 | Frozen Top 25 | A fixed PLUMBING_CORE presentation cohort. Later contact research must not silently rebuild it. |
 | Learning trial | A small set of real calls meant to test buying reality, contacts, and workflow. Not a close plan. |
-| Product A | Subscription intelligence for supply houses. Current commercial focus. The supply house's reps own the contractor relationship. |
-| Product B | Contractor demand / fulfillment engine. Future hypothesis; not built, not being built. Higher data-trust bar. |
-| Blending | Justifying, designing, or describing one product in terms of the other (for example, Product A as a marketplace funnel). Not allowed. |
+| Product A | Supplier intelligence. Closest current path to revenue. The supplier's reps own the contractor relationship. |
+| Product B | Contractor procurement. Early access for typed or pasted material requests in the pilot. Marketplace, inventory, and pricing are planned. |
+| Blending | Treating the two products as one marketplace, or describing early access as live inventory or live price. Not allowed. |
 | Shared data engine | Infrastructure both products could read. An engineering fact, not a product decision. |
 | Cursor brief | Implementation instructions for a later founder-approved Cursor session. |
 | Verified system state | Facts from the repository, database, or tests. |

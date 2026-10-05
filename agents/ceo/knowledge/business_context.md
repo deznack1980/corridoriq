@@ -4,8 +4,8 @@ CorridorIQ is a construction procurement intelligence business. The live product
 
 The company is pre-revenue unless a future operating snapshot says otherwise. Do not treat a prepared sales trial as revenue.
 
-CorridorIQ has two separate products (see `commercial_models.md`). Product A, subscription intelligence for supply houses, is the current commercial focus. Product B, a contractor demand / fulfillment engine, is a future hypothesis and is not being built. They are not blended, and no marketplace is assumed.
+CorridorIQ has two connected products (see `commercial_models.md` and `company/constitution.json`). Product A, supplier intelligence, is the closest path to revenue. Product B, contractor procurement, is in early access for typed or pasted material requests where the pilot implements them. Marketplace, inventory, and pricing features are planned. They are not blended, and no marketplace is assumed.
 
-The CEO's job is to raise the odds of a defensible, revenue-generating Product A business and to refuse work that spends engineering before a cheaper test would do.
+The CEO's job is to raise the odds of a defensible, revenue-generating business and to refuse work that spends engineering before a cheaper test would do. Production safety and data trust outrank a feature.
 
 Temporary counts, the current Top 25, and this week's source health are not stored in this file. Read them from the latest generated reports and, when available, a read-only database snapshot.

@@ -1,6 +1,19 @@
-# CorridorIQ CEO agent (v0.1)
+# CorridorIQ CEO agent (v0.2)
 
-Internal executive decision support. The agent reads CorridorIQ's operating state, names one bottleneck, and recommends the next action. It does not change production data, and it does not run the engineering it describes.
+Internal executive operating layer. The agent reads CorridorIQ's company state and operating evidence, names one bottleneck, and recommends the next action. It does not change production data, contact customers, or run the engineering it describes.
+
+v0.2 company state, maturity, the stakeholder ledger, approval gates, cloud readiness, and the Jarvis contract are documented in:
+
+- `CEO_AGENT_README.md`
+- `CEO_AGENT_STRATEGY.md`
+- `CEO_AGENT_CLOUD_READINESS.md`
+- `CEO_AGENT_APPROVAL_GATES.md`
+- `CEO_AGENT_STATE_SCHEMA.md`
+- `CEO_AGENT_SYSTEM_HEALTH.md`
+
+Morning system health is a deterministic check in the morning-brief cycle. A model cannot mark a failed check healthy, and the check does not repair anything.
+
+The v0.1 decision engine, morning operator, retrieval, and read-only database path are still the execution core.
 
 This is not a coding agent, a chatbot wrapper, or an autonomous operator. Founder approval stays between a recommendation and any Cursor work.
 
@@ -124,6 +137,19 @@ Each company gets one candidate permit. The gates in `morning/gates.py` fail clo
 `python -m agents.ceo outcome <opportunity_id> <OUTCOME> [--action A] [--note N]` appends to `morning/outcomes.jsonl`. No score reads it. A later run holds an account whose newest outcome is `BAD_DATA`, `WRONG_CONTRACTOR`, or `NOT_RELEVANT`. The database table in `morning/outcomes.py` is a design only.
 
 There is no scheduler. `python -m agents.ceo eval` includes eight morning scenarios run against a synthetic fixture (`evals/morning_fixture.py`).
+
+## Native data intelligence (v0.1)
+
+`analytics/` is a governed, read-only query layer for the existing CEO agent. It does not open a write connection and it does not call `get_connection()`. Named tools calculate counts, ranks, and period comparisons in SQL. Optional model narration cannot change those facts.
+
+```text
+python -m agents.ceo data "What changed since yesterday?" --db PATH --as-of YYYY-MM-DD
+python -m agents.ceo daily-brief --db PATH --as-of YYYY-MM-DD [--organization N] [--no-write]
+```
+
+`daily-brief` writes `latest_daily_brief.json` and `latest_daily_brief.md` under `CEO_OUTPUT_DIR/intelligence/` unless `--no-write` is set. `schedule()` raises. Production scheduling is off. Supplier and customer-book questions require an explicit organization id; the model does not choose the tenant. Material-request stores are not opened.
+
+A succeeded morning refresh publishes the owner brief after the run row is committed. The owner admin page is `ceo-morning-brief.html`, backed by `GET /api/admin/ceo-morning-brief` (`admin.system` only). Copies of each successful brief are kept in `intelligence/history/`. A failed refresh does not publish a new brief. A brief failure does not change the refresh status.
 
 ## Output class
 

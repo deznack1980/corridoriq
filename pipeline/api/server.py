@@ -87,6 +87,7 @@ _PORTAL_PAGES = {
     "user-management.js",
     # Role-aware dashboards.
     "admin-dashboard.html", "admin-dashboard.js",
+    "ceo-morning-brief.html", "ceo-morning-brief.js",
     "estimator-work-queue.html", "estimator-work-queue.js",
     "readonly-dashboard.html", "readonly-dashboard.js",
     # Sprint 6 — product pricing pages.
@@ -104,6 +105,10 @@ _BILLING_PAGES = {"billing.html", "billing.js", "contractor-accounts.html", "con
 _BILLING_PREFIX = "/api/billing/"
 _BILLING_WEBHOOK = "/api/billing/stripe/webhook"
 _BILLING_MAX_ACTION_BODY = 16 * 1024
+
+# Contractor pilot referral entry: /join/<public referral code>.
+_JOIN_RE = re.compile(r"^/join/[a-z0-9-]{4,40}/?$")
+_JOIN_PAGE = "contractor-join.html"
 
 _ID = r"(\d+)"
 _SALES_COMPANY_RE = re.compile(
@@ -194,7 +199,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     # ---- response helpers -------------------------------------------------
     def _json(self, code: int, payload, *, set_cookie: str | None = None,
-              clear_cookie: bool = False):
+              clear_cookie: bool = False, raw_cookie: str | None = None):
         body = json.dumps(payload, default=str).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -206,6 +211,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         if clear_cookie:
             self.send_header("Set-Cookie",
                              f"{COOKIE}=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax")
+        if raw_cookie is not None:
+            self.send_header("Set-Cookie", raw_cookie)
         self.end_headers()
         self.wfile.write(body)
 
@@ -230,7 +237,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         return "; ".join(parts)
 
     # ---- request helpers --------------------------------------------------
-    def _token(self) -> str | None:
+    def _token(self, name: str = COOKIE) -> str | None:
         raw = self.headers.get("Cookie")
         if not raw:
             return None
@@ -239,8 +246,16 @@ class ApiHandler(BaseHTTPRequestHandler):
             jar.load(raw)
         except Exception:
             return None
-        morsel = jar.get(COOKIE)
+        morsel = jar.get(name)
         return morsel.value if morsel else None
+
+    def _pilot_token(self) -> str | None:
+        from pipeline.pilot.platform import PILOT_COOKIE
+        return self._token(PILOT_COOKIE)
+
+    def _is_json(self) -> bool:
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        return ctype == "application/json"
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -302,12 +317,21 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         if not path.startswith("/api/"):
+            # Supplier referral links (/join/<code>) open the contractor join
+            # page; the page reads the code from the URL.
+            if _JOIN_RE.match(path) and self._serve_static("/" + _JOIN_PAGE):
+                return
             if self._serve_static(path):
                 return
             return self._json(404, {"error": "not found"})
         if path.startswith(_BILLING_PREFIX):
             return self._billing_dispatch("GET", path)
         query = self._flatten(parse_qs(parsed.query))
+        if path.startswith("/api/pilot/"):
+            # Contractor pilot: separate platform database; the intelligence
+            # database is never opened for these routes.
+            from pipeline.pilot import api as pilot_api
+            return pilot_api.handle(self, "GET", path, query, None)
         conn = _factory()
         try:
             self._route_get(conn, path, query)
@@ -333,6 +357,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         path = parsed.path
         if path.startswith(_BILLING_PREFIX):
             return self._billing_dispatch(method, path)
+        if path.startswith("/api/pilot/"):
+            from pipeline.pilot import api as pilot_api
+            return pilot_api.handle(self, method, path, {}, self._body())
         conn = _factory()
         try:
             body = self._body()
@@ -478,6 +505,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             from pipeline.auth.rbac import require_permission
             require_permission(user, "pipeline.monitor")
             return self._json(200, pipeline_runs.admin_status(conn))
+        if path == "/api/admin/ceo-morning-brief":
+            from pipeline.auth.rbac import require_permission
+            from agents.ceo.analytics.serve import load_owner_brief_view
+            from agents.ceo.paths import output_dir
+            require_permission(user, "admin.system")
+            return self._json(200, load_owner_brief_view(
+                reports_conn=conn, directory=output_dir() / "intelligence"))
 
         # --- reports ---
         if path == "/api/reports/catalog":

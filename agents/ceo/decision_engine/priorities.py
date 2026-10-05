@@ -256,9 +256,9 @@ def _why_trial(snapshot: dict) -> list[str]:
             f"[VERIFIED_SYSTEM_STATE] ROC role in the latest validation report: {roc.get('value')}."
         )
     lines.append(
-        "[INTERNAL_HYPOTHESIS] Product A, subscription intelligence for supply houses, is the "
-        "current focus and is not yet validated revenue. Product B, a contractor demand / "
-        "fulfillment engine, is a separate future hypothesis and is not built."
+        "[INTERNAL_HYPOTHESIS] Product A, supplier intelligence, is the closest path to revenue "
+        "and is not yet validated. Product B typed material requests are early access in the "
+        "pilot. A fulfillment marketplace remains an unvalidated hypothesis and is not authorized."
     )
     lines.append(
         "[MODEL_INFERENCE] Engineering is not the bottleneck while a prepared, contactable "

@@ -1,0 +1,55 @@
+{
+  "schema": "corridoriq.ceo.stakeholders.v1",
+  "updated_at": "2026-10-04T00:00:00Z",
+  "source": "founder assignment, CEO agent v0.2",
+  "reason": "Record the Sonoran conversation without upgrading it to revenue.",
+  "organizations": [
+    {
+      "organization": "Sonoran Plumbing Supply",
+      "segment": "plumbing supply house",
+      "relationship": "potential founding supply partner / pilot participant",
+      "relationship_claim_class": "FACT",
+      "paid_customer": false,
+      "active_paid_pilot": false,
+      "stakeholders": [
+        {
+          "name": "John",
+          "role": "UNKNOWN",
+          "interactions": [
+            {
+              "interaction_id": "sonoran-john-2026-10-friday",
+              "stated_when": "Friday",
+              "interaction_date": "2026-10-02",
+              "date_claim_class": "INFERENCE",
+              "date_reason": "The assignment is dated Sunday 2026-10-04. The preceding Friday is 2026-10-02. The founder did not state a calendar date.",
+              "interaction_type": "conversation",
+              "interests": "Updated on CorridorIQ progress. Very excited and looking forward to seeing and using the product.",
+              "pain_points": null,
+              "objections": null,
+              "requested_capabilities": null,
+              "commitments": null,
+              "follow_up_date": null,
+              "next_action": "Demonstrate the working contractor-to-supplier request flow before asking for a longer-term commitment.",
+              "next_action_claim_class": "RECOMMENDATION",
+              "pricing_discussed": false,
+              "willingness_to_pay": "UNKNOWN",
+              "pilot_status": "not_an_active_paid_pilot",
+              "conversion_status": "not_a_customer",
+              "signal": "POSITIVE_CUSTOMER_DEVELOPMENT_SIGNAL",
+              "signal_claim_class": "FACT",
+              "confidence": "MEDIUM",
+              "evidence_source": "Founder report in the 2026-10-04 CEO v0.2 assignment. Not a recording or a written quote from John.",
+              "must_not_classify_as": [
+                "validated_willingness_to_pay",
+                "signed_customer",
+                "contracted_revenue",
+                "active_paid_pilot",
+                "confirmed_product_market_fit"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

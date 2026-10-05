@@ -10,7 +10,7 @@ from agents.ceo.decision_engine.engine import decide
 from agents.ceo.evals.evaluator import evaluate_all
 from agents.ceo.memory.decision_log import append_decision, read_log, record_outcome
 from agents.ceo.operating_state.snapshot import build_snapshot
-from agents.ceo.paths import FIXTURE_DIR, REPO_ROOT
+from agents.ceo.paths import FIXTURE_DIR
 from agents.ceo.retrieval.artifacts import load_sales_artifacts
 from agents.ceo.service import run
 
@@ -152,15 +152,71 @@ def test_zero_project_sales_trial_does_not_override_the_operating_artifact(tmp_p
     ]
 
 
-def test_live_sales_trial_artifact_parses_when_present():
-    reports = REPO_ROOT / "reports" / "generated"
-    if not list(reports.glob("sales_trial_*.json")):
-        return
-    parsed = load_sales_artifacts(reports)
+def _sales_trial_pair(directory):
+    """Operating fixture plus a newer zero-project stub. Names, not the clock, decide order.
+
+    The operating file is a test fixture with a known project count. It is not
+    a copy of a production report, and nothing is read from reports/generated.
+    """
+    operating = {
+        "after_kpis": {"n": 25, "counts": {"actionable": 24}, "pct": {"actionable": 96.0}},
+        "callability_counts": {"CALL_NOW": 14},
+        "guardrails": {"after": {"projects": 100}},
+        "outcomes_design": {"status": "DESIGN_ONLY"},
+    }
+    stub = {
+        "after_kpis": {"n": 5, "counts": {"actionable": 4}, "pct": {"actionable": 80.0}},
+        "callability_counts": {"CALL_NOW": 1},
+        "guardrails": {"after": {"projects": 0}},
+        "outcomes_design": {"status": "DESIGN_ONLY"},
+    }
+    operating_name = "sales_trial_20260919T175538Z.json"
+    stub_name = "sales_trial_20261005T102733Z.json"
+    (directory / operating_name).write_text(json.dumps(operating), encoding="utf-8")
+    (directory / stub_name).write_text(json.dumps(stub), encoding="utf-8")
+    return operating_name
+
+
+def test_live_sales_trial_artifact_parses_when_present(tmp_path):
+    """The selected artifact is the explicit operating fixture, even if a later stub exists."""
+    operating_name = _sales_trial_pair(tmp_path)
+    parsed = load_sales_artifacts(tmp_path)
     assert parsed["present"] is True
-    payload = json.loads((reports / parsed["source"]).read_text(encoding="utf-8"))
+    assert parsed["source"] == operating_name
+    payload = json.loads((tmp_path / parsed["source"]).read_text(encoding="utf-8"))
     assert (
         parsed["metrics"]["actionable_public_contact_pct"]["value"]
         == payload["after_kpis"]["pct"]["actionable"]
+        == 96.0
     )
     assert payload["guardrails"]["after"]["projects"] > 0
+    assert parsed["metrics"]["ignored_newer_reports"]["value"] == [
+        "sales_trial_20261005T102733Z.json"
+    ]
+    assert (tmp_path / parsed["source"]).is_file()
+
+
+def test_sales_trial_selection_is_independent_of_write_order(tmp_path):
+    """Filename stamps select the artifact. The order the files are written does not."""
+    operating_name = "sales_trial_20260919T175538Z.json"
+    stub_name = "sales_trial_20261005T102733Z.json"
+    operating = {
+        "after_kpis": {"pct": {"actionable": 96.0}},
+        "guardrails": {"after": {"projects": 100}},
+    }
+    stub = {
+        "after_kpis": {"pct": {"actionable": 80.0}},
+        "guardrails": {"after": {"projects": 0}},
+    }
+    orders = (
+        (tmp_path / "stub-first", ((stub_name, stub), (operating_name, operating))),
+        (tmp_path / "operating-first", ((operating_name, operating), (stub_name, stub))),
+    )
+    for directory, files in orders:
+        directory.mkdir()
+        for name, payload in files:
+            (directory / name).write_text(json.dumps(payload), encoding="utf-8")
+        parsed = load_sales_artifacts(directory)
+        assert parsed["source"] == operating_name
+        selected = json.loads((directory / parsed["source"]).read_text(encoding="utf-8"))
+        assert selected["guardrails"]["after"]["projects"] > 0

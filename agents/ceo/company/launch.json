@@ -1,0 +1,20 @@
+{
+  "schema": "corridoriq.ceo.launch.v1",
+  "updated_at": "2026-10-04T00:00:00Z",
+  "source": "founder assignment plus git commit b2a532a",
+  "reason": "Website work is launch-ready. Public production is not confirmed.",
+  "confidence": "HIGH",
+  "publicly_launched": false,
+  "landing_commit": "b2a532a",
+  "landing_commit_subject": "Website: launch-ready landing page as the public homepage",
+  "landing_commit_is_cutover": false,
+  "remaining_before_public_launch": [
+    "verified off-machine/offsite backup",
+    "clean production checkout",
+    "production runtime configuration",
+    "Cloudflare preparation",
+    "DNS cutover",
+    "Microsoft 365 DNS preservation",
+    "public smoke test"
+  ]
+}

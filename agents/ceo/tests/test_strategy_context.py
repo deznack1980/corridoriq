@@ -21,11 +21,14 @@ def _facts() -> dict[str, str]:
 def test_commercial_facts_keep_products_separate():
     facts = _facts()
     assert facts["products_are_separate"] == "true"
+    assert facts["products_are_connected"] == "true"
     assert facts["blend_products"] == "false"
     assert facts["assume_marketplace"] == "false"
-    assert facts["product_b_authorized"] == "false"
-    assert "supply houses" in facts["product_a"] and "current commercial focus" in facts["product_a"]
-    assert "future hypothesis" in facts["product_b"]
+    assert facts["product_b_marketplace_authorized"] == "false"
+    assert facts["transaction_fee_default"] == "false"
+    assert "supplier intelligence" in facts["product_a"]
+    assert "EARLY_ACCESS" in facts["product_b"]
+    assert "PLANNED" in facts["product_b"]
 
 
 def test_old_parallel_lane_framing_is_gone_from_active_context():
@@ -38,8 +41,8 @@ def test_old_parallel_lane_framing_is_gone_from_active_context():
 def test_snapshot_carries_the_separation():
     snap = build_snapshot(reports_dir=FIXTURE_DIR, connect_db=False)
     commercial = snap["commercial"]
-    assert "supply houses" in commercial["product_a"]["value"]
-    assert "future hypothesis" in commercial["product_b"]["value"]
+    assert "supplier intelligence" in commercial["product_a"]["value"]
+    assert "EARLY_ACCESS" in commercial["product_b"]["value"]
     assert commercial["products_separate"]["value"] is True
     assert commercial["assume_marketplace"]["value"] is False
 

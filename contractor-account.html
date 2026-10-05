@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Contractor account</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#0b1729" />
+  <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/pilot.css" />
+</head>
+<body class="pilot">
+  <header class="pbar"><div class="in">
+    <a class="pbrand" href="/contractor-join.html"><img src="/assets/brand/corridoriq-mark.svg" alt="" /><div><div class="t">CorridorIQ</div><div class="s" data-i18n="brand_sub"></div></div></a>
+    <span class="sp"></span>
+    <div class="lang-switch"></div>
+  </div></header>
+
+  <main class="pmain narrow">
+    <form class="card" id="signupForm" novalidate hidden>
+      <h1 class="ptitle" data-i18n="signup_title"></h1>
+      <p class="lede" id="signupFor" hidden></p>
+      <div class="msg err" id="signupErr" role="alert" hidden></div>
+      <div class="field"><label for="suName" data-i18n="f_name"></label><input id="suName" type="text" autocomplete="name" maxlength="120" required /></div>
+      <div class="field"><label for="suBusiness" data-i18n="f_business"></label><input id="suBusiness" type="text" autocomplete="organization" maxlength="200" required /></div>
+      <div class="field"><label for="suEmail" data-i18n="f_email"></label><input id="suEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required /></div>
+      <div class="field"><label for="suPhone"><span data-i18n="f_phone"></span> <span class="muted">(<span data-i18n="optional"></span>)</span></label><input id="suPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="25" /></div>
+      <div class="field"><label for="suPassword" data-i18n="f_password"></label><input id="suPassword" type="password" autocomplete="new-password" minlength="8" maxlength="200" required /><span class="hint" data-i18n="f_password_hint"></span></div>
+      <button class="btn primary block" type="submit" id="suSubmit" data-i18n="signup_submit"></button>
+      <p class="muted" style="margin:14px 0 0" data-i18n="privacy_line"></p>
+      <p style="margin:16px 0 0"><span data-i18n="have_account"></span> <a href="?mode=signin" data-i18n="sign_in"></a></p>
+    </form>
+
+    <form class="card" id="signinForm" novalidate hidden>
+      <h1 class="ptitle" data-i18n="signin_title"></h1>
+      <div class="msg err" id="signinErr" role="alert" hidden></div>
+      <div class="field"><label for="siEmail" data-i18n="f_email"></label><input id="siEmail" type="email" autocomplete="email" inputmode="email" required /></div>
+      <div class="field"><label for="siPassword" data-i18n="f_password"></label><input id="siPassword" type="password" autocomplete="current-password" required /></div>
+      <button class="btn primary block" type="submit" id="siSubmit" data-i18n="signin_submit"></button>
+      <p style="margin:16px 0 0"><span data-i18n="no_account"></span> <a href="?mode=signup" data-i18n="create_account"></a></p>
+    </form>
+  </main>
+  <script src="/pilot-i18n.js"></script>
+  <script src="/pilot-common.js"></script>
+  <script src="/contractor-account.js"></script>
+</body>
+</html>

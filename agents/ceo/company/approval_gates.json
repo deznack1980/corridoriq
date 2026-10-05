@@ -1,0 +1,41 @@
+{
+  "schema": "corridoriq.ceo.approval_gates.v1",
+  "updated_at": "2026-10-04T00:00:00Z",
+  "source": "founder assignment, CEO agent v0.2",
+  "reason": "Consequential actions stay founder-gated. The agent may analyze and draft.",
+  "requires_founder_approval": [
+    "production_deployment",
+    "production_database_writes",
+    "delete_production_data",
+    "dns_change",
+    "cloudflare_change",
+    "domain_change",
+    "customer_outreach",
+    "email",
+    "sms",
+    "phone_call",
+    "social_publishing",
+    "pricing_commitment",
+    "contract",
+    "payment",
+    "purchase",
+    "subscription",
+    "paid_api",
+    "hiring",
+    "external_data_license",
+    "merge_protected_branch",
+    "public_capability_claim"
+  ],
+  "allowed_without_approval": [
+    "analyze",
+    "prioritize",
+    "research",
+    "draft",
+    "propose_tasks",
+    "generate_cursor_assignment",
+    "produce_brief",
+    "identify_risks",
+    "prepare_recommendation"
+  ],
+  "execute_default": false
+}

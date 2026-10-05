@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Material request inbox</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#0b1729" />
+  <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/pilot.css" />
+</head>
+<body class="pilot">
+  <header class="pbar"><div class="in">
+    <a class="pbrand" href="/supplier-inbox.html"><img src="/assets/brand/corridoriq-mark.svg" alt="" /><div><div class="t">CorridorIQ</div><div class="s" id="supplierName">Material request inbox</div></div></a>
+    <span class="sp"></span>
+    <button class="link-btn" type="button" id="signOut" hidden>Sign out</button>
+  </div></header>
+
+  <main class="pmain">
+    <form class="card" id="signin" style="max-width:480px;margin:0 auto" novalidate hidden>
+      <h1 class="ptitle">Supplier sign in</h1>
+      <div class="msg err" id="signinErr" role="alert" hidden></div>
+      <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" required /></div>
+      <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required /></div>
+      <button class="btn blue block" type="submit">Sign in</button>
+    </form>
+
+    <section id="inbox" hidden>
+      <h1 class="ptitle">Material requests</h1>
+      <p class="lede">Requests contractors have chosen to send to your branch through CorridorIQ. You see only what each contractor sends — nothing else in their account.</p>
+      <div class="msg err" id="err" role="alert" hidden></div>
+      <div class="grid2">
+        <section class="card">
+          <ul class="rlist" id="list"></ul>
+          <p class="muted" id="empty" hidden>No requests yet.</p>
+        </section>
+        <section class="card" id="detail" hidden>
+          <p class="muted" id="dMeta" style="margin:0 0 4px"></p>
+          <h2 id="dTitle" style="margin:0 0 4px"></h2>
+          <p class="muted" id="dRef"></p>
+          <p id="dStatus"></p>
+          <table class="ltable">
+            <thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Unit</th><th>Contractor note</th></tr></thead>
+            <tbody id="dLines"></tbody>
+          </table>
+          <div class="btn-row" style="margin-top:14px">
+            <button class="btn blue small" type="button" id="ack">Acknowledge receipt</button>
+          </div>
+          <p class="muted" style="margin:12px 0 0">Acknowledging tells the contractor you received the request. Quoting and ordering are not part of this pilot.</p>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script src="/pilot-i18n.js"></script>
+  <script src="/pilot-common.js"></script>
+  <script src="/supplier-inbox.js"></script>
+</body>
+</html>

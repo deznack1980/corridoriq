@@ -1,0 +1,41 @@
+{
+  "schema": "corridoriq.ceo.constitution.v1",
+  "updated_at": "2026-10-04T00:00:00Z",
+  "source": "founder assignment, CEO agent v0.2",
+  "reason": "Replace the 2026-09-29 'Product B is not being built' statement with the current two-product model.",
+  "confidence": "HIGH",
+  "company": "CorridorIQ",
+  "category": "Construction Intelligence + Procurement",
+  "initial_market": "Phoenix metropolitan area / Arizona construction ecosystem",
+  "primary_users": ["supply houses / distributors", "contractors"],
+  "core_principle": "CorridorIQ is not simply a permit-lead dashboard. It connects projects, companies, people, material demand, and procurement.",
+  "chain": ["PROJECTS", "COMPANIES", "PEOPLE", "MATERIAL DEMAND", "PROCUREMENT"],
+  "commercial_thesis": {
+    "suppliers_pay_for_intelligence": true,
+    "contractors_drive_network_demand": true,
+    "procurement_connects_the_two": true,
+    "transaction_fee_default": false,
+    "claim_class": "HYPOTHESIS"
+  },
+  "positioning": "Protect and streamline the business you already have while helping you find business you don't have yet.",
+  "flywheel": [
+    "supplier intelligence",
+    "recruit supply houses",
+    "supplier participation",
+    "supplier customer invitations",
+    "contractors join",
+    "contractors submit material demand",
+    "demand flows toward participating suppliers",
+    "procurement signals improve intelligence",
+    "supplier ROI improves",
+    "more suppliers join"
+  ],
+  "supplier_value_lanes": {
+    "existing_customer_revenue": "Make the supplier easier to buy from.",
+    "new_demand": "Help the supplier identify business it does not already have."
+  },
+  "products_are_separate": true,
+  "products_are_connected": true,
+  "blend_products": false,
+  "assume_marketplace": false
+}

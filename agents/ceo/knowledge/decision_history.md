@@ -34,6 +34,10 @@ Fulfillment software was not authorized. Customer-dashboard cutover was not auth
 
 On 2026-09-24 the founder directed that Intelligence and Fulfillment / demand routing are parallel commercialization options on the same intelligence core. Suppliers are not forced into one model. The CEO evaluates the lanes independently as field evidence, economics, and operational cost arrive. The mandate does not require both lanes to survive forever, and it does not authorize building either lane.
 
+## Two connected products (2026-10-04)
+
+Supplier intelligence and contractor procurement are connected and stay distinct. Suppliers pay for intelligence. Contractors drive network demand. Procurement connects them. Typed material requests are early access in the pilot code. Photo-to-BOM, live inventory, account pricing, quoting, payments, and a marketplace stay planned. Internal pricing hypotheses are not an approved price. John's excitement at Sonoran Plumbing Supply on the Friday before 2026-10-04 is a positive customer-development signal, not willingness to pay, a signed customer, or a paid pilot. Public production launch is not confirmed. Landing commit b2a532a is launch-ready website work only. This supersedes the 2026-09-29 claim that Product B is not being built. It does not authorize a marketplace build, a price, or a customer contact.
+
 ## Product A is the focus; Product B is separate and future
 
 On 2026-09-29 the founder clarified the commercial model. Product A, subscription intelligence for supply houses, is the current commercial focus. Product B, a contractor demand / fulfillment engine, is a future hypothesis. The two are separate concepts and must not be blended; no marketplace, order flow, or transaction revenue is assumed. The shared data engine stays shared infrastructure. This supersedes the 2026-09-24 framing of two parallel lanes of equal standing. It is a strategy patch and authorizes no build.

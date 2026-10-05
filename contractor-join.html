@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Contractor network</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#0b1729" />
+  <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/pilot.css" />
+</head>
+<body class="pilot">
+  <header class="pbar"><div class="in">
+    <a class="pbrand" href="/contractor-join.html"><img src="/assets/brand/corridoriq-mark.svg" alt="" /><div><div class="t">CorridorIQ</div><div class="s" data-i18n="brand_sub"></div></div></a>
+    <span class="sp"></span>
+    <div class="lang-switch"></div>
+  </div></header>
+
+  <main class="pmain narrow">
+    <div class="card" id="joinCard">
+      <div class="kicker" id="joinKicker" data-i18n="join_kicker"></div>
+      <h1 class="ptitle" id="joinTitle"></h1>
+      <p class="lede" id="joinLede"></p>
+      <div class="msg err" id="joinInvalid" hidden></div>
+      <ol class="steps" id="joinSteps">
+        <li id="step1"></li><li id="step2"></li><li id="step3"></li>
+      </ol>
+      <div id="anonActions" class="grid2" style="gap:10px">
+        <a class="btn primary block" id="toSignup" href="/contractor-account.html?mode=signup" data-i18n="create_account"></a>
+        <a class="btn ghost block" id="toSignin" href="/contractor-account.html?mode=signin" data-i18n="sign_in"></a>
+      </div>
+      <div id="userActions" hidden>
+        <div class="msg ok" id="connectedMsg" hidden></div>
+        <div class="btn-row">
+          <button class="btn primary" id="connectBtn" type="button" hidden></button>
+          <a class="btn ghost" href="/contractor-home.html" data-i18n="dashboard"></a>
+        </div>
+      </div>
+      <p class="note" id="joinNote" style="margin:16px 0 0" hidden></p>
+    </div>
+    <p class="muted" data-i18n="privacy_line"></p>
+  </main>
+  <script src="/pilot-i18n.js"></script>
+  <script src="/pilot-common.js"></script>
+  <script src="/contractor-join.js"></script>
+</body>
+</html>

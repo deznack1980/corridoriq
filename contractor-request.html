@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Material request</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#0b1729" />
+  <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/pilot.css" />
+</head>
+<body class="pilot">
+  <header class="pbar"><div class="in">
+    <a class="pbrand" href="/contractor-home.html"><img src="/assets/brand/corridoriq-mark.svg" alt="" /><div><div class="t">CorridorIQ</div><div class="s" data-i18n="dashboard"></div></div></a>
+    <span class="sp"></span>
+    <div class="lang-switch"></div>
+  </div></header>
+
+  <main class="pmain" id="main" hidden>
+    <p style="margin:0 0 8px"><a href="/contractor-home.html">← <span data-i18n="dashboard"></span></a></p>
+    <div class="msg err" id="err" role="alert" hidden></div>
+    <div class="msg ok" id="ok" role="status" hidden></div>
+
+    <!-- EDIT -->
+    <section id="editView" hidden>
+      <h1 class="ptitle" data-i18n="req_new_title" id="editTitle"></h1>
+      <div class="card">
+        <div class="field"><label for="title" data-i18n="req_title"></label><input id="title" type="text" maxlength="120" data-i18n-ph="req_title_ph" /></div>
+        <div class="field" style="margin-bottom:0"><label for="reference" data-i18n="req_reference"></label><input id="reference" type="text" maxlength="200" data-i18n-ph="req_reference_ph" /></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="req_lines"></h2>
+        <div class="lines" id="lines"></div>
+        <button class="btn ghost small" type="button" id="addLine" style="margin-top:12px">+ <span data-i18n="add_line"></span></button>
+      </div>
+      <details class="card" id="pasteBox">
+        <summary style="cursor:pointer;font-weight:650;min-height:36px" data-i18n="paste_title"></summary>
+        <p class="muted" data-i18n="paste_help"></p>
+        <textarea id="paste" rows="6" maxlength="60000"></textarea>
+        <button class="btn ghost small" type="button" id="pasteAdd" style="margin-top:10px" data-i18n="paste_add"></button>
+      </details>
+      <div class="btn-row">
+        <button class="btn ghost" type="button" id="saveDraft" data-i18n="save_draft"></button>
+        <button class="btn primary" type="button" id="toReview" data-i18n="review"></button>
+      </div>
+    </section>
+
+    <!-- REVIEW / SENT -->
+    <section id="reviewView" hidden>
+      <h1 class="ptitle" id="reviewHeading"></h1>
+      <p class="lede" id="reviewSub"></p>
+      <div class="card">
+        <h2 id="rvTitle"></h2>
+        <p class="muted" id="rvRef"></p>
+        <table class="ltable">
+          <thead><tr><th>#</th><th data-i18n="col_description"></th><th data-i18n="col_qty"></th><th data-i18n="col_unit"></th><th data-i18n="col_note"></th></tr></thead>
+          <tbody id="rvLines"></tbody>
+        </table>
+      </div>
+      <div id="sendArea"></div>
+      <div class="btn-row" id="reviewActions">
+        <button class="btn ghost" type="button" id="backToEdit" data-i18n="edit"></button>
+      </div>
+    </section>
+  </main>
+
+  <div class="dlg-back" id="dlg" hidden>
+    <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+      <h3 id="dlgTitle"></h3>
+      <p id="dlgBody"></p>
+      <div class="btn-row">
+        <button class="btn primary" type="button" id="dlgOk" data-i18n="confirm_send"></button>
+        <button class="btn ghost" type="button" id="dlgCancel" data-i18n="cancel"></button>
+      </div>
+    </div>
+  </div>
+  <script src="/pilot-i18n.js"></script>
+  <script src="/pilot-common.js"></script>
+  <script src="/contractor-request.js"></script>
+</body>
+</html>

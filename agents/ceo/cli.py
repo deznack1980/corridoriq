@@ -47,7 +47,23 @@ def main(argv: list[str] | None = None) -> int:
     outcome.add_argument("--note")
     outcome.add_argument("--by", dest="recorded_by")
 
+    data = sub.add_parser("data", help="Answer a business question from governed read-only analytics.")
+    data.add_argument("question")
+    data.add_argument("--db", required=True, help="SQLite path. Opened read-only.")
+    data.add_argument("--as-of", required=True, help="YYYY-MM-DD")
+    data.add_argument("--organization", type=int, help="Organization id. Omit for owner intelligence scope.")
+
+    daily = sub.add_parser("daily-brief", help="Local CEO intelligence brief. Does not schedule anything.")
+    daily.add_argument("--db", required=True)
+    daily.add_argument("--as-of", required=True)
+    daily.add_argument("--organization", type=int)
+    daily.add_argument("--no-write", action="store_true")
+
     args = parser.parse_args(argv)
+    if args.command == "data":
+        return _data(args)
+    if args.command == "daily-brief":
+        return _daily(args)
     if args.command == "morning":
         return _morning(args)
     if args.command == "outcome":
@@ -79,6 +95,46 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     _emit(result["text"])
     return 0
+
+
+def _data(args) -> int:
+    from pathlib import Path
+
+    from agents.ceo.analytics.answer import answer_question
+    from agents.ceo.analytics.scope import organization_scope, owner_scope
+
+    scope = organization_scope(args.organization) if args.organization is not None else owner_scope()
+    payload = answer_question(args.question, db_path=Path(args.db), as_of=args.as_of, scope=scope)
+    _emit(_format_answer(payload))
+    return 0 if payload["status"] in {"KNOWN", "UNSUPPORTED", "UNKNOWN"} else 2
+
+
+def _daily(args) -> int:
+    from pathlib import Path
+
+    from agents.ceo.analytics.brief import build_daily_brief, write_brief
+    from agents.ceo.analytics.scope import organization_scope, owner_scope
+    from agents.ceo.paths import ensure_output_dir
+
+    scope = organization_scope(args.organization) if args.organization is not None else owner_scope()
+    brief = build_daily_brief(db_path=Path(args.db), as_of=args.as_of, scope=scope)
+    _emit(brief["markdown"])
+    if not args.no_write:
+        paths = write_brief(brief, ensure_output_dir() / "intelligence")
+        for name, path in paths.items():
+            _emit(f"wrote {name}: {path}")
+    return 0 if brief["status"] in {"KNOWN", "UNKNOWN"} else 2
+
+
+def _format_answer(payload: dict) -> str:
+    lines = [
+        f"STATUS {payload['status']}",
+        f"TOOLS {', '.join(payload.get('tools') or []) or 'none'}",
+        "EXECUTE no",
+    ]
+    for claim in payload.get("claims") or []:
+        lines.append(f"{claim['class']}: {claim['text']}")
+    return "\n".join(lines)
 
 
 def _morning(args) -> int:

@@ -90,6 +90,7 @@ def conn(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_EXPORTS_DIR", tmp_path / "exports")
     monkeypatch.setattr(settings, "REPORTS_GENERATED_DIR", tmp_path / "reports")
     monkeypatch.setattr(settings, "MORNING_REFRESH_LOG_DIR", tmp_path / "logs")
+    monkeypatch.setenv("CEO_OUTPUT_DIR", str(tmp_path / "ceo-out"))
     return c
 
 
@@ -400,6 +401,7 @@ def http_server(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_EXPORTS_DIR", tmp_path / "exports")
     monkeypatch.setattr(settings, "REPORTS_GENERATED_DIR", tmp_path / "reports")
     monkeypatch.setattr(settings, "MORNING_REFRESH_LOG_DIR", tmp_path / "logs")
+    monkeypatch.setenv("CEO_OUTPUT_DIR", str(tmp_path / "ceo-out"))
     srv = ThreadingHTTPServer(("127.0.0.1", 0), server_mod.ApiHandler)
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
@@ -467,3 +469,75 @@ def test_admin_can_trigger_run(http_server):
             break
         time.sleep(0.1)
     assert found
+
+
+def _success_connectors(monkeypatch):
+    _install_connectors(monkeypatch, {
+        "phoenix_az": FakeConnector("phoenix_az", records=[
+            _permit(permit_number="PHX-1", status="Applied", filed_date=_today_str(),
+                    description="New commercial building", permit_type="Building"),
+        ]),
+        "mesa_az": FakeConnector("mesa_az", records=[
+            _permit(permit_number="MSA-1", status="Issued", issued_date=_today_str(),
+                    description="Tenant improvement plumbing", permit_type="Plumbing"),
+        ]),
+    })
+
+
+def test_successful_refresh_publishes_owner_brief(conn, monkeypatch, tmp_path):
+    _success_connectors(monkeypatch)
+    summary = _run(conn)
+    assert summary["status"] == "succeeded"
+    latest = tmp_path / "ceo-out" / "intelligence" / "latest_daily_brief.json"
+    payload = json.loads(latest.read_text(encoding="utf-8"))
+    assert payload["execute"] is False
+    assert payload["provenance"]["refresh_run_id"] == summary["run_id"]
+    assert payload["provenance"]["scope"] == {"kind": "owner", "organization_id": None}
+    history = tmp_path / "ceo-out" / "intelligence" / "history"
+    assert (history / f"refresh-{summary['run_id']:06d}.json").is_file()
+    assert (history / f"refresh-{summary['run_id']:06d}.md").is_file()
+
+
+def test_failed_and_partial_refresh_do_not_publish(conn, monkeypatch, tmp_path):
+    _install_connectors(monkeypatch, {
+        "phoenix_az": FakeConnector("phoenix_az", fail_seq=[InvalidRequestError("nope")]),
+        "mesa_az": FakeConnector("mesa_az", fail_seq=[InvalidRequestError("nope")]),
+    })
+    failed = _run(conn)
+    assert failed["status"] == "failed"
+    assert not (tmp_path / "ceo-out" / "intelligence" / "latest_daily_brief.json").exists()
+
+    _install_connectors(monkeypatch, {
+        "phoenix_az": FakeConnector("phoenix_az", records=[
+            _permit(permit_number="PHX-2", status="Applied", filed_date=_today_str()),
+        ]),
+        "mesa_az": FakeConnector("mesa_az", fail_seq=[InvalidRequestError("bad query")]),
+    })
+    partial = _run(conn)
+    assert partial["status"] == "partial"
+    assert not (tmp_path / "ceo-out" / "intelligence" / "latest_daily_brief.json").exists()
+
+
+def test_brief_generation_failure_keeps_refresh_succeeded(conn, monkeypatch, tmp_path):
+    _success_connectors(monkeypatch)
+    first = _run(conn)
+    assert first["status"] == "succeeded"
+    latest = tmp_path / "ceo-out" / "intelligence" / "latest_daily_brief.json"
+    original = json.loads(latest.read_text(encoding="utf-8"))
+
+    def _boom(**kwargs):
+        raise RuntimeError("brief generator failed")
+
+    monkeypatch.setattr("agents.ceo.analytics.publish.build_daily_brief", _boom)
+    second = _run(conn)
+    assert second["status"] == "succeeded"
+    stored = conn.execute(
+        "SELECT status FROM pipeline_runs WHERE id=?", (second["run_id"],)
+    ).fetchone()
+    assert stored["status"] == "succeeded"
+    again = json.loads(latest.read_text(encoding="utf-8"))
+    assert again["provenance"]["refresh_run_id"] == original["provenance"]["refresh_run_id"] == first["run_id"]
+    status = json.loads((tmp_path / "ceo-out" / "intelligence" / "latest_brief_status.json").read_text(encoding="utf-8"))
+    assert status["latest_attempt"]["brief_status"] == "failed"
+    assert status["latest_attempt"]["refresh_run_id"] == second["run_id"]
+    assert status["latest_valid"]["refresh_run_id"] == first["run_id"]

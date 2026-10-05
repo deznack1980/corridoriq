@@ -26,5 +26,5 @@ def redact(text: str) -> str:
 def customer_safe_output(*_args, **_kwargs):
     """v0.1 has no customer-facing generator."""
     raise PermissionError(
-        "Customer-facing generation is not authorized in CEO agent v0.1."
+        "Customer-facing generation is not authorized in CEO agent v0.2."
     )
