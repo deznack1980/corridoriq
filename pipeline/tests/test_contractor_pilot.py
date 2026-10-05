@@ -1,8 +1,10 @@
 """Contractor account foundation + single-supplier pilot.
 
 Runs the real portal server (ApiHandler) against a temporary pilot root with
-synthetic tenants and users. The intelligence-database factory is replaced by
-one that fails the test if a pilot route ever opens it.
+synthetic tenants and users. The application-database factory points at a
+temporary billing database. A pilot route may read users, organizations, and
+billing_accounts there to classify material-request priority. The SQL trace
+fails the test if that lookup touches supplier intelligence tables.
 """
 
 from __future__ import annotations
@@ -18,7 +20,10 @@ from pathlib import Path
 import pytest
 
 from pipeline.api import server as server_mod
+from pipeline.config.settings import SCHEMA_PATH
 from pipeline.pilot import accounts, analytics, api as pilot_api, materials, qr
+from pipeline.tests.test_billing import PRICE
+from pipeline.tests.test_billing_contractor_pro import PRICE_C, ccfg
 from pipeline.pilot.__main__ import check_public_url, referral_url
 from pipeline.pilot.platform import ENV_ROOT, PILOT_COOKIE, Platform, PilotNotConfigured, validate_root
 from pipeline.tenancy.contractor import ContractorContext, ContractorStore, ContractorTenant
@@ -65,13 +70,20 @@ class Client:
 def env(tmp_path, monkeypatch):
     root = tmp_path / "pilot"
     monkeypatch.setenv(ENV_ROOT, str(root))
-    opened = []
+    billing_db = tmp_path / "billing.db"
+    init = sqlite3.connect(billing_db)
+    init.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    init.close()
+    statements = []
 
-    def forbidden_factory():
-        opened.append(True)
-        raise AssertionError("intelligence database opened")
+    def factory():
+        conn = sqlite3.connect(billing_db)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.set_trace_callback(statements.append)
+        return conn
 
-    monkeypatch.setattr(server_mod, "_factory", forbidden_factory)
+    monkeypatch.setattr(server_mod, "_factory", factory)
     pilot_api._hits.clear()
     platform = Platform(root)
     conn = platform.connect()
@@ -85,10 +97,14 @@ def env(tmp_path, monkeypatch):
     srv = ThreadingHTTPServer(("127.0.0.1", 0), server_mod.ApiHandler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield {"root": root, "platform": platform, "port": srv.server_address[1], "code_a": code_a,
-           "code_b": code_b, "opened": opened}
+           "code_b": code_b, "billing_db": billing_db}
     srv.shutdown()
     srv.server_close()
-    assert not opened, "a pilot route opened the intelligence database"
+    # The priority lookup may read users, organizations, and billing_accounts only.
+    for sql in statements:
+        lowered = sql.lower()
+        for banned in ("permits", "companies", "projects", "company_customer_priority", "source_health"):
+            assert banned not in lowered, sql
 
 
 def client(env) -> Client:
@@ -276,28 +292,139 @@ def test_unpaid_material_request_is_standard_despite_a_forged_priority(env):
     assert "organization" not in json.dumps(detail)
 
 
-def test_material_request_priority_uses_the_session_organization(env, monkeypatch):
-    seen = {}
+def _billing(env):
+    conn = sqlite3.connect(env["billing_db"])
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
 
-    def fake(conn, organization_id, config=None):
-        seen["organization_id"] = organization_id
-        return "priority"
 
-    monkeypatch.setattr("pipeline.billing.entitlements.request_priority", fake)
-    email = "routed@example.test"
-    c, _ = signup(env, email, "Routed Mechanical", code=env["code_a"])
-    status, req = c.call("POST", "/api/pilot/contractor/requests", {
-        "title": "Job",
-        "lines": [{"raw_description": "pipe", "quantity": 1}],
-        "priority": "standard",
-        "organization_id": 99999,
-    })
+def _contractor_billing(env, email, *, state="active", price=PRICE_C, account_type="contractor",
+                        with_account=True):
+    """Local billing row for the same email. Not a Stripe call and not a second pilot user."""
+    conn = _billing(env)
+    now = "2026-10-05T12:00:00+00:00"
+    slug = "bill-" + re.sub(r"[^a-z0-9]+", "-", email.lower()).strip("-")
+    org = conn.execute(
+        "INSERT INTO organizations (name, slug, is_active, account_type, created_at, updated_at) "
+        "VALUES (?, ?, 1, ?, ?, ?)",
+        (email, slug, account_type, now, now),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO users (organization_id, email, normalized_email, password_hash, is_active, "
+        "created_at, updated_at) VALUES (?, ?, ?, 'not-a-login', 1, ?, ?)",
+        (org, email, email.lower(), now, now),
+    )
+    if with_account:
+        conn.execute(
+            """
+            INSERT INTO billing_accounts (
+                organization_id, stripe_customer_id, stripe_subscription_id, stripe_price_id,
+                subscription_status, billing_state, livemode, current_period_end, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 0, '2099-01-01T00:00:00+00:00', ?, ?)
+            """,
+            (org, f"cus_TEST{org}", f"sub_TEST{org}", price, state, state, now, now),
+        )
+    conn.commit()
+    conn.close()
+    return org
+
+
+def _use_test_billing(monkeypatch):
+    monkeypatch.setattr("pipeline.billing.entitlements.load_config", lambda environ=None: ccfg())
+
+
+def _request(c, **extra):
+    body = {"title": "Job", "lines": [{"raw_description": "pipe", "quantity": 1}]}
+    body.update(extra)
+    return c.call("POST", "/api/pilot/contractor/requests", body)
+
+
+def test_paid_contractor_pro_request_is_priority_and_reaches_the_supplier(env, monkeypatch):
+    _use_test_billing(monkeypatch)
+    email = "pro@example.test"
+    org = _contractor_billing(env, email)
+    c, me = signup(env, email, "Pro Mechanical", code=env["code_a"])
+    status, req = _request(c, priority="standard", organization_id=99999, plan="founding_supply_partner",
+                           entitlement="supplier_intelligence", account_type="supplier")
     assert status == 201 and req["priority"] == "priority"
-    org_id = db(env).execute(
-        "SELECT organization_id FROM users WHERE email=?", (email,)
-    ).fetchone()["organization_id"]
-    assert seen["organization_id"] == org_id
-    assert seen["organization_id"] != 99999
+    status, sent = send(c, req, me["connections"][0]["connection_id"])
+    assert status == 200 and sent["priority"] == "priority"
+    supplier, _ = login(env, "inbox-a@example.test")
+    detail = supplier.call("GET", "/api/pilot/supplier/requests")[1]
+    share = supplier.call("GET", f"/api/pilot/supplier/requests/{detail['items'][0]['share_id']}")[1]
+    assert share["priority"] == "priority"
+    assert org != 99999
+
+
+def test_past_due_contractor_pro_new_request_is_standard(env, monkeypatch):
+    _use_test_billing(monkeypatch)
+    email = "lapse@example.test"
+    org = _contractor_billing(env, email)
+    c, _ = signup(env, email, "Lapse Mechanical", code=env["code_a"])
+    assert _request(c, title="While paid")[1]["priority"] == "priority"
+    conn = _billing(env)
+    conn.execute("UPDATE billing_accounts SET billing_state='past_due', subscription_status='past_due' "
+                 "WHERE organization_id=?", (org,))
+    conn.commit()
+    conn.close()
+    second = _request(c, title="After lapse", priority="priority", organization_id=org)[1]
+    assert second["priority"] == "standard"
+    stored = {item["title"]: item["priority"] for item in c.call("GET", "/api/pilot/contractor/requests")[1]["items"]}
+    assert stored["While paid"] == "priority"
+    assert stored["After lapse"] == "standard"
+
+
+@pytest.mark.parametrize("state", ["incomplete", "unpaid", "paused", "canceled", "checkout_pending"])
+def test_nonpaying_billing_states_stay_standard(env, monkeypatch, state):
+    _use_test_billing(monkeypatch)
+    email = f"{state}@example.test"
+    _contractor_billing(env, email, state=state)
+    c, _ = signup(env, email, "State Mechanical", code=env["code_a"])
+    status, req = _request(c, priority="priority", plan="contractor_pro")
+    assert status == 201 and req["priority"] == "standard"
+
+
+def test_free_contractor_request_is_standard(env, monkeypatch):
+    _use_test_billing(monkeypatch)
+    email = "free@example.test"
+    _contractor_billing(env, email, with_account=False)
+    c, _ = signup(env, email, "Free Mechanical", code=env["code_a"])
+    status, req = _request(c, priority="priority", plan="contractor_pro", entitlement="contractor_pro")
+    assert status == 201 and req["priority"] == "standard"
+
+
+def test_forged_organization_cannot_borrow_another_pro_entitlement(env, monkeypatch):
+    _use_test_billing(monkeypatch)
+    pro_org = _contractor_billing(env, "other-pro@example.test")
+    email = "plain@example.test"
+    _contractor_billing(env, email, with_account=False)
+    c, _ = signup(env, email, "Plain Mechanical", code=env["code_a"])
+    status, req = _request(c, priority="priority", organization_id=pro_org, plan="contractor_pro",
+                           account_type="contractor", entitlement="contractor_pro")
+    assert status == 201 and req["priority"] == "standard"
+
+
+def test_wrong_plan_payment_does_not_grant_priority(env, monkeypatch):
+    _use_test_billing(monkeypatch)
+    email = "wrong-plan@example.test"
+    _contractor_billing(env, email, price=PRICE, state="active")
+    c, _ = signup(env, email, "Wrong Plan Mechanical", code=env["code_a"])
+    assert _request(c, priority="priority")[1]["priority"] == "standard"
+
+
+def test_supplier_organization_and_supplier_session_do_not_get_priority(env, monkeypatch):
+    _use_test_billing(monkeypatch)
+    email = "supplier-match@example.test"
+    _contractor_billing(env, email, account_type="supplier", price=PRICE, state="active")
+    c, _ = signup(env, email, "Looks Like Supply", code=env["code_a"])
+    assert _request(c, priority="priority", account_type="supplier")[1]["priority"] == "standard"
+    supplier, _ = login(env, "inbox-a@example.test")
+    status, _body = supplier.call("POST", "/api/pilot/contractor/requests", {
+        "title": "Nope", "lines": [{"raw_description": "pipe", "quantity": 1}],
+        "priority": "priority", "plan": "contractor_pro",
+    })
+    assert status == 403
 
 
 # ---------------------------------------------------------------- 7-9 attribution + language

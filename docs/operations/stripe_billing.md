@@ -356,16 +356,21 @@ incomplete / failed first payment, 3-D Secure pending, **past_due (no grace
 period: `PAID_ACCESS_STATES` = active, trialing)**, unpaid, paused, canceled,
 supplier organizations, wrong-plan payments, misconfiguration or any error.
 
-This branch has **no material-request system** (the contractor request flow
-lives in the unmerged pilot branch; `contractor-rfq*` pages here are front-end
-samples). The integration branch must:
+Pilot sign-in and Contractor Pro billing remain separate databases. The link
+is the authenticated pilot user's email, not a second account and not a client
+field. When a material request is created, CorridorIQ looks up that email on
+the application database. Exactly one active user in one active
+`account_type='contractor'` organization is authoritative. `request_priority`
+runs against that organization. No match, or more than one match, stores
+`standard`. An existing pilot user with no Contractor Pro organization does
+not become Pro. The pilot-platform organization is never the billing
+organization.
 
-1. Take `organization_id` from the authenticated session only, never from the
-   request body, query string or headers.
+1. The organization id comes from that email lookup, never from the request
+   body, query string, or headers.
 2. Call `request_priority(conn, organization_id)` when a request is **created**
-   and store the result on the request row (e.g. `priority TEXT NOT NULL
-   CHECK (priority IN ('priority','standard'))`), so later billing changes do
-   not silently reclassify history.
+   and store the result on the request row (`priority` is `priority` or
+   `standard`), so later billing changes do not silently reclassify history.
 3. Ignore any client-supplied `priority`, `plan`, `entitlement`, `account_type`
    or price field.
 4. Use only "Priority Request" / "priority routing" language: no response-time,

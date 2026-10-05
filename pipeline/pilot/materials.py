@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import secrets
+import sqlite3
 from datetime import datetime, timezone
 
 from pipeline.pilot import accounts, analytics
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS material_requests (
     title       TEXT NOT NULL,
     reference   TEXT,
     status      TEXT NOT NULL CHECK (status IN ('DRAFT', 'SENT')),
-    -- Frozen at creation from request_priority(session organization). Not a service level.
+    -- Frozen at creation from request_priority(billing organization for the session email). Not a service level.
     priority    TEXT NOT NULL DEFAULT 'standard' CHECK (priority IN ('priority', 'standard')),
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
@@ -74,18 +75,92 @@ def _store(platform, principal: Principal):
     return store
 
 
+# Billing lookup may read only these tables. Supplier intelligence stays closed.
+_BILLING_READ_TABLES = {"users", "organizations", "billing_accounts", "sqlite_master", "sqlite_schema"}
+
+
+def _open_billing_lookup():
+    """Read-only view of the application database for the priority linkage.
+
+    The pilot session stays in the pilot database. This connection is used only
+    to find the contractor organization that owns the session email.
+    """
+    from pipeline.api import server as server_mod
+
+    conn = server_mod._factory()
+    conn.row_factory = sqlite3.Row
+
+    def _authorizer(action, arg1, arg2, db_name, source):
+        if action not in (20, 21, 22, 31):
+            return 1
+        if action == 20 and arg1 not in _BILLING_READ_TABLES and arg1 not in (None, ""):
+            return 1
+        return 0
+
+    conn.set_authorizer(_authorizer)
+    return conn
+
+
+def _billing_organization_id(principal: Principal):
+    """The Contractor Pro organization for this session email, or None.
+
+    Exactly one active user in one active contractor organization matches.
+    Zero matches and more than one match both fail closed. The pilot-platform
+    organization is never treated as a billing organization. Client input is
+    not consulted.
+    """
+    from pipeline.auth.service import normalize_email
+
+    if principal is None or principal.kind != "contractor":
+        return None, None
+    user = principal.user or {}
+    email = normalize_email(user.get("email") or "") if isinstance(user, dict) else ""
+    if "@" not in email:
+        return None, None
+    try:
+        conn = _open_billing_lookup()
+    except Exception:
+        return None, None
+    try:
+        rows = conn.execute(
+            """
+            SELECT u.organization_id
+            FROM users u
+            JOIN organizations o ON o.id = u.organization_id
+            WHERE u.normalized_email = ?
+              AND u.is_active = 1
+              AND o.is_active = 1
+              AND o.account_type = 'contractor'
+            """,
+            (email,),
+        ).fetchall()
+    except Exception:
+        conn.close()
+        return None, None
+    if len(rows) != 1:
+        conn.close()
+        return None, None
+    return int(rows[0]["organization_id"]), conn
+
+
 def _routing_class(pconn, principal: Principal) -> str:
-    """Classify from the authenticated user's organization. Client fields are ignored."""
+    """Classify from the billing organization that owns the session email.
+
+    ``pconn`` is the pilot database and is intentionally not the source of the
+    organization. A body field cannot change the result.
+    """
     from pipeline.billing.entitlements import PRIORITY, STANDARD, request_priority
 
-    user = principal.user or {}
-    org_id = user.get("organization_id") if isinstance(user, dict) else None
-    if org_id is None:
+    del pconn  # pilot-platform is not a Contractor Pro organization
+    org_id, billing = _billing_organization_id(principal)
+    if org_id is None or billing is None:
         return STANDARD
     try:
-        value = request_priority(pconn, int(org_id))
+        value = request_priority(billing, org_id)
     except Exception:
         return STANDARD
+    finally:
+        billing.close()
     return value if value in (PRIORITY, STANDARD) else STANDARD
 
 
