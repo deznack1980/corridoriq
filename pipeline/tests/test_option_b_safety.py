@@ -175,8 +175,8 @@ def test_sample_prices_live_only_in_sample_file():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("path,expect", [
-    ("/", "home.html"),
-    ("/index.html", "home.html"),
+    ("/", "landing.html"),
+    ("/index.html", "landing.html"),
     ("/login.html", "login.html"),
     ("/portal.css", "portal.css"),
     ("/assets/fonts/inter-latin-wght-normal.woff2", "inter-latin-wght-normal.woff2"),

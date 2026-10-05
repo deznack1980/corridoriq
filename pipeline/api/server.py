@@ -47,7 +47,7 @@ COOKIE = settings.SESSION_COOKIE_NAME
 _STATIC_SUFFIXES = (".html", ".js", ".css")
 
 # Public site entry point ("/" and the old "/index.html").
-_HOME_PAGE = "home.html"
+_HOME_PAGE = "landing.html"
 
 # Legacy static pages from the original pitch site. They read files this server
 # never serves (data/exports/*.json) or a different API, so they are not served.
@@ -55,6 +55,8 @@ _LEGACY_UNSERVED = {
     "dashboard.html", "dashboard.js", "contractors.html", "contractors.js",
     "companies.html", "companies.js", "company-profile.html", "company-profile.js",
     "job.html", "job.js", "knowledge.html", "knowledge.js", "script.js", "style.css",
+    # Previous homepage, replaced by landing.html at "/"; kept in the repo, not served.
+    "home.html",
 }
 
 # Files below the project root are served only from these folders, and only
@@ -164,6 +166,7 @@ def _launch_morning_refresh(user_id: int) -> None:
 
 class ApiHandler(BaseHTTPRequestHandler):
     server_version = "CorridorIQ/1.0"
+    sys_version = ""  # do not advertise the Python version
 
     def log_message(self, *args):  # quieter console
         pass
@@ -290,8 +293,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._json(exc.status, {"error": str(exc)})
         except (ValidationError, ValueError) as exc:
             self._json(400, {"error": str(exc)})
-        except Exception as exc:  # pragma: no cover
-            self._json(500, {"error": str(exc)})
+        except Exception:  # pragma: no cover
+            # Never echo internals (paths, SQL, stack detail) to the client.
+            self._json(500, {"error": "internal error"})
         finally:
             conn.close()
 
@@ -315,8 +319,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._json(exc.status, {"error": str(exc)})
         except (ValidationError, ValueError) as exc:
             self._json(400, {"error": str(exc)})
-        except Exception as exc:  # pragma: no cover
-            self._json(500, {"error": str(exc)})
+        except Exception:  # pragma: no cover
+            # Never echo internals (paths, SQL, stack detail) to the client.
+            self._json(500, {"error": "internal error"})
         finally:
             conn.close()
 
