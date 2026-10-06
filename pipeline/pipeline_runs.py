@@ -547,15 +547,58 @@ _EMPLOYEE_LABELS = {
 }
 
 
-def employee_status(conn: sqlite3.Connection) -> dict:
-    """Simple, non-technical status for sales/estimator users."""
+STALE_LABEL = "Data may be out of date"
+
+
+def _last_completed(conn: sqlite3.Connection, statuses: tuple[str, ...] | None = None) -> str | None:
+    sql = ("SELECT completed_at FROM pipeline_runs WHERE run_type=? AND completed_at IS NOT NULL "
+           "AND status <> 'running'")
+    params: list = [RUN_TYPE]
+    if statuses:
+        sql += f" AND status IN ({','.join('?' for _ in statuses)})"
+        params += list(statuses)
+    row = conn.execute(sql + " ORDER BY started_at DESC, id DESC LIMIT 1", params).fetchone()
+    return row["completed_at"] if row else None
+
+
+def employee_status(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
+    """Simple, non-technical status for sales/estimator users.
+
+    Freshness is measured from the last *succeeded* refresh, with the same
+    36-hour window the trust layer uses (trust.health.REFRESH_OK_HOURS). A
+    succeeded latest run older than that is labelled possibly out of date,
+    never "Data current"; a newer failed or partial run never makes data current.
+    """
+    from pipeline.trust.health import REFRESH_OK_HOURS
+
     run = latest_run(conn)
     if run is None:
-        return {"label": "No refresh yet", "status": None, "last_completed": None}
+        return {"label": "No refresh yet", "status": None, "last_completed": None,
+                "last_successful": None, "freshness": "unknown", "stale": True,
+                "hours_since_success": None}
+    now = now or datetime.now(timezone.utc)
+    # A running row has no completion time; show the last finished run's.
+    completed = run["completed_at"] or _last_completed(conn)
+    success = _last_completed(conn, ("succeeded",))
+    done = _parse_iso(success)
+    hours = None if done is None else round((now - done).total_seconds() / 3600.0, 1)
+    if done is None:
+        freshness = "unknown"
+    elif hours > REFRESH_OK_HOURS:
+        freshness = "stale"
+    else:
+        freshness = "current"
+    label = _EMPLOYEE_LABELS.get(run["status"], run["status"])
+    if run["status"] == "succeeded" and freshness != "current":
+        label = STALE_LABEL
     return {
-        "label": _EMPLOYEE_LABELS.get(run["status"], run["status"]),
+        "label": label,
         "status": run["status"],
-        "last_completed": run["completed_at"],
+        "last_completed": completed,
+        "last_successful": success,
+        "freshness": freshness,
+        "stale": freshness != "current",
+        "hours_since_success": hours,
     }
 
 

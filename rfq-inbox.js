@@ -150,7 +150,7 @@
             <label class="fld full">Notes to contractor<textarea id="ibNotes" placeholder="Substitutions, lead-time notes, delivery windows…">${CIQ.esc(extras.notes)}</textarea></label>
           </div>
           <div><div id="ibTotals"></div>
-            <button class="btn btn-positive btn-block" type="button" id="ibSubmit" style="margin-top:12px">Submit quote</button>
+            <button class="btn btn-positive btn-block" type="button" id="ibSubmit" style="margin-top:12px">Submit sample quote</button>
             <div class="muted" style="font-size:11.5px;margin-top:8px;text-align:center">Preview only — nothing is sent.</div></div>
         </div>
       </div></div>`;

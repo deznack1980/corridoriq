@@ -147,7 +147,11 @@ def test_dashboard_never_promotes_non_relevant_accounts(world):
     d = crm.dashboard(world["conn"], world["rep"])
     promoted = [i["company_id"] for i in d["priority_companies"]]
     assert world["co1"] in promoted and world["dealer"] not in promoted
-    assert d["kpis"]["high_priority_opportunities"] == 1
+    # Account fit is reported under its own name; "high priority" is the
+    # trust-gated count of accounts to act on today, as on the admin dashboard.
+    assert d["kpis"]["core_relevance_accounts"] == 1
+    assert d["kpis"]["high_priority_opportunities"] == d["kpis"]["accounts_to_act_on_today"]
+    assert d["kpis"]["high_priority_opportunities"] == len(d["todays_accounts"]["items"])
     assert "todays_accounts" in d and "data_status" in d["todays_accounts"]
     feed = d["recent_opportunity_activity"]
     assert all(i["company_id"] != world["dealer"] for i in feed)

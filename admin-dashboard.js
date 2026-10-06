@@ -74,11 +74,16 @@
     }
   }
 
+  // Amber when the newest refresh "succeeded" but is too old to call current.
+  function refreshClass(r) {
+    if (r.stale && r.status === "succeeded") return "amber";
+    return ({ succeeded: "green", partial: "amber", failed: "red", running: "" })[r.status] || "";
+  }
+
   function renderRefresh() {
     const el = document.getElementById("refreshCard");
     const mr = data.morning_refresh || {};
-    const status = mr.status || "none";
-    const cls = ({ succeeded: "green", partial: "amber", failed: "red", running: "" })[status] || "";
+    const cls = refreshClass(mr);
     const when = mr.last_completed ? CIQ.relTime(mr.last_completed) : "—";
     const running = mr.running ? " · in progress" : "";
     el.innerHTML = `<div class="dash-status">
@@ -91,11 +96,12 @@
     const el = document.getElementById("freshness");
     const items = data.jurisdiction_freshness || [];
     if (!items.length) {
-      el.innerHTML = CIQ.emptyState({ title: "All jurisdictions are current",
-        text: "Freshness will appear after the next morning refresh." });
+      el.innerHTML = CIQ.emptyState({ title: "Freshness not available yet",
+        text: "Jurisdiction freshness will appear after the next morning refresh. Do not assume feeds are current." });
       return;
     }
-    const bad = items.filter((j) => j.status && j.status !== "Current");
+    // A feed the trust layer blocks from Today's accounts is not "current" here either.
+    const bad = items.filter((j) => (j.status && j.status !== "Current") || j.outreach_blocked);
     if (!bad.length) {
       el.innerHTML = CIQ.emptyState({ icon: "✓", title: "All jurisdictions are current",
         text: `${items.length} jurisdiction${items.length === 1 ? "" : "s"} reporting.` });
@@ -103,7 +109,7 @@
     const rows = (bad.length ? bad : items).map((j) => {
       const cls = j.status === "Current" ? "green" : j.status === "Delayed" ? "amber" : "red";
       return `<tr><td data-label="Jurisdiction">${CIQ.esc(j.name || j.slug || "—")}</td>
-        <td data-label="Status"><span class="badge ${cls}">${CIQ.esc(j.status || "—")}</span></td>
+        <td data-label="Status"><span class="badge ${cls}">${CIQ.esc(j.status || "—")}</span>${j.outreach_blocked ? ' <span class="badge red" title="Excluded from the daily call list until the feed is current">Outreach blocked</span>' : ""}</td>
         <td data-label="Synced">${j.newest_source_date ? CIQ.fmtDate(j.newest_source_date) : "—"}</td>
         <td data-label="Today">${j.records_received_today || 0}</td></tr>`;
     }).join("");
@@ -138,18 +144,18 @@
     const el = document.getElementById("opps");
     const items = data.recent_opportunity_activity || [];
     if (!items.length) {
-      el.innerHTML = CIQ.emptyState({ title: "No new submitted opportunities today",
-        text: "Organization-wide opportunity activity will appear here." });
+      el.innerHTML = CIQ.emptyState({ title: "No opportunity activity in the last 60 days",
+        text: "Only projects with a source permit date in the last 60 days appear here." });
       return;
     }
     el.innerHTML = `<div class="table-wrap"><table class="tbl responsive"><thead><tr>
-      <th>Company</th><th>City</th><th>Stage</th><th>Priority</th><th>Date</th>
+      <th>Company</th><th>City</th><th>Stage</th><th>Priority</th><th>Last activity</th>
       </tr></thead><tbody>${items.map((o) => `<tr>
         <td data-label="Company">${o.company_id ? `<a href="sales-company-profile.html?id=${o.company_id}">${CIQ.esc(o.display_name || "—")}</a>` : (o.display_name ? CIQ.esc(o.display_name) : '<span class="muted">No contractor attributed</span>')}</td>
         <td data-label="City">${CIQ.esc(CIQ.placeName(o.jurisdiction) || "—")}</td>
         <td data-label="Stage">${CIQ.esc(CIQ.titleCase(o.project_lifecycle || "—"))}</td>
         <td data-label="Priority">${CIQ.bandBadge(o.opportunity_score)}</td>
-        <td data-label="Date">${o.opportunity_date ? CIQ.fmtDate(o.opportunity_date) : "—"}</td>
+        <td data-label="Last activity">${CIQ.activityAge(o)} ${CIQ.freshnessBadge(o)}</td>
       </tr>`).join("")}</tbody></table></div>`;
   }
 

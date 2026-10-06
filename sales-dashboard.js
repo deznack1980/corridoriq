@@ -111,15 +111,18 @@
       CIQ.logActivity({ companyId: Number(b.dataset.id), companyName: b.dataset.name, onSaved: load })));
   }
 
-  const REFRESH_CLASS = { succeeded: "green", partial: "amber", failed: "red", running: "" };
+  // Amber when the newest refresh "succeeded" but is too old to call current.
+  function refreshClass(r) {
+    if (r.stale && r.status === "succeeded") return "amber";
+    return ({ succeeded: "green", partial: "amber", failed: "red", running: "" })[r.status] || "";
+  }
 
   async function renderRefresh() {
     const el = document.getElementById("refreshCard");
     let simple;
     try { simple = await CIQ.api.get("/api/status/refresh"); }
     catch (e) { el.innerHTML = ""; return; }
-    const status = simple.status || "none";
-    const cls = REFRESH_CLASS[status] || "";
+    const cls = refreshClass(simple);
     const when = simple.last_completed ? CIQ.relTime(simple.last_completed) : "—";
     const canRun = CIQ.hasPerm("pipeline.run");
     el.innerHTML = `<div class="dash-status">

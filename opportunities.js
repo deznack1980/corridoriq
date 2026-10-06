@@ -4,7 +4,7 @@
   let page = 1; const filters = {}; let canEdit = false;
 
   const CONTEXT_TEXT = {
-    assigned: "Projects of companies assigned to you (or with a CRM relationship, for managers)",
+    assigned: "Projects from the last 60 days for companies assigned to you (or with a CRM relationship, for managers)",
     organization: "Every project from the last 60 days, attributed or not",
   };
 
@@ -35,11 +35,13 @@
         <div><span>Timing</span>${CIQ.esc(CIQ.titleCase(p.opportunity_timing || "—"))}</div>
         <div><span>Trade</span>${CIQ.esc(CIQ.titleCase(p.trade_scope || "—"))}</div>
         <div><span>Category</span>${CIQ.esc(CIQ.titleCase(p.project_category || "—"))}</div>
-        <div><span>Opportunity</span>${p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : "—"}</div>
+        <div><span>Last source activity</span>${CIQ.activityAge(p)}</div>
         <div><span>Related permits</span>${p.permit_count != null ? p.permit_count : "—"}</div>
         <div><span>Est. material value</span>${p.estimated_material_value != null ? CIQ.money(p.estimated_material_value) : "—"}</div>
       </div>
       ${p.account_relevance ? `<div>${CIQ.relevanceBadge(p.account_relevance)}</div>` : ""}
+      ${CIQ.freshnessBadge(p) ? `<div>${CIQ.freshnessBadge(p)}</div>` : ""}
+      ${p.freshness_note ? `<div class="muted" style="font-size:12.5px">${CIQ.esc(p.freshness_note)}</div>` : ""}
       ${contactLine(p)}
       ${p.description ? `<div class="cc-reason">${CIQ.esc(truncate(p.description, 120))}</div>` : ""}
       <div class="cc-quick">
@@ -51,7 +53,12 @@
 
   function note(data) {
     const ctx = data.context || filters.context || "assigned";
-    const bits = [CONTEXT_TEXT[ctx] || ctx];
+    const history = data.recency_window && data.recency_window.history_included;
+    const bits = [history
+      ? "All projects for companies assigned to you, including history older than 60 days (labelled)"
+      : (CONTEXT_TEXT[ctx] || ctx)];
+    if (data.stale_source_rows)
+      bits.push(`${data.stale_source_rows} on this page from a city feed that is not current`);
     bits.push(data.include_all_scopes ? "all trades shown"
       : "projects outside your trade focus are hidden");
     if (!data.include_all_scopes && data.hidden_by_checks)
@@ -104,11 +111,24 @@
     let ctx = incoming.get("context") || (user.dashboard_mode === "organization" ? "organization" : "assigned");
     if (ctx === "organization" && !orgAllowed) ctx = "assigned";
     ctxSel.value = ctx; filters.context = ctx;
-    ctxSel.addEventListener("change", () => { filters.context = ctxSel.value; page = 1; load(); });
+    // History follows the context, so the reload happens after syncHistory below.
+    ctxSel.addEventListener("change", () => { filters.context = ctxSel.value; page = 1; });
 
     const scopeBox = document.getElementById("fscope");
     if (incoming.get("scope") === "all") { scopeBox.checked = true; filters.scope = "all"; }
     scopeBox.addEventListener("change", () => { filters.scope = scopeBox.checked ? "all" : ""; page = 1; load(); });
+
+    // Older history: assigned context only; rows come back labelled HISTORICAL.
+    const historyBox = document.getElementById("fhistory");
+    const syncHistory = () => {
+      const assigned = (filters.context || "assigned") === "assigned";
+      historyBox.disabled = !assigned;
+      filters.recency = assigned && historyBox.checked ? "all" : "";
+    };
+    if (incoming.get("recency") === "all") historyBox.checked = true;
+    syncHistory();
+    historyBox.addEventListener("change", () => { syncHistory(); page = 1; load(); });
+    ctxSel.addEventListener("change", () => { syncHistory(); load(); });
 
     const lc = document.getElementById("flifecycle");
     ["preconstruction", "permitting", "under_construction", "inspection", "completed"].forEach((v) => {

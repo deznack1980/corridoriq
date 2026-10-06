@@ -47,7 +47,16 @@ PERMISSIONS: dict[str, str] = {
     "pipeline.run": "Trigger the data pipeline / morning refresh manually",
     "billing.manage": "Start a subscription and manage billing for the organization",
     "admin.system": "Full system administration",
+    "owner.ceo_agent": "Business owner only: CEO Agent and CEO Morning Brief (never implied by admin.system)",
 }
+
+# Permissions that belong to the business owner, not to administration.
+# admin.system never implies them, the admin role never includes them, and
+# they are granted only through the "owner" role, which only the server-side
+# grant command assigns (python -m pipeline.auth.grant_owner).
+OWNER_ONLY_PERMISSIONS = frozenset({"owner.ceo_agent"})
+CEO_AGENT_PERMISSION = "owner.ceo_agent"
+OWNER_ROLE = "owner"
 
 # System roles and their granted permissions.
 _SALES_REP = {
@@ -87,8 +96,13 @@ _CONTRACTOR_OWNER = {"billing.manage"}
 ROLES: dict[str, dict] = {
     "admin": {
         "display_name": "Administrator",
-        "description": "Full system access.",
-        "permissions": set(PERMISSIONS.keys()),
+        "description": "Full system access (owner-only capabilities excluded).",
+        "permissions": set(PERMISSIONS.keys()) - OWNER_ONLY_PERMISSIONS,
+    },
+    OWNER_ROLE: {
+        "display_name": "Business Owner",
+        "description": "Owner-only capabilities (CEO Agent). Additive to admin; grants nothing else.",
+        "permissions": set(OWNER_ONLY_PERMISSIONS),
     },
     "sales_manager": {
         "display_name": "Sales Manager",
@@ -175,7 +189,9 @@ def load_user_permissions(conn: sqlite3.Connection, user_id: int) -> set[str]:
     ).fetchall()
     keys = {r["permission_key"] for r in rows}
     if "admin.system" in keys:
-        return set(PERMISSIONS.keys())
+        # admin.system expands to every permission except the owner-only ones,
+        # which stay only if a role actually granted them.
+        return (set(PERMISSIONS.keys()) - OWNER_ONLY_PERMISSIONS) | (keys & OWNER_ONLY_PERMISSIONS)
     return keys
 
 
@@ -191,6 +207,9 @@ def has_permission(user: dict, permission_key: str) -> bool:
     if not user:
         return False
     perms = user.get("permissions") or set()
+    if permission_key in OWNER_ONLY_PERMISSIONS:
+        # Exact grant only: admin.system is not a substitute.
+        return permission_key in perms
     return "admin.system" in perms or permission_key in perms
 
 
@@ -220,3 +239,16 @@ class AuthzError(Exception):
 def require_permission(user: dict, permission_key: str) -> None:
     if not has_permission(user, permission_key):
         raise AuthzError(f"missing permission: {permission_key}")
+
+
+def require_ceo_owner(conn: sqlite3.Connection, user: dict) -> None:
+    """CEO Agent access: the exact owner.ceo_agent grant AND membership of
+    CorridorIQ's own organization. admin.system alone is never enough."""
+    from pipeline.auth.seed import DEFAULT_ORG_SLUG
+
+    require_permission(user, CEO_AGENT_PERMISSION)
+    org = conn.execute(
+        "SELECT slug FROM organizations WHERE id=?", (user.get("organization_id"),)
+    ).fetchone()
+    if org is None or org["slug"] != DEFAULT_ORG_SLUG:
+        raise AuthzError(f"missing permission: {CEO_AGENT_PERMISSION}")

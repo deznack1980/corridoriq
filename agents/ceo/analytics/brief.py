@@ -128,7 +128,7 @@ def section_texts(brief: dict) -> list[dict] | None:
     bodies = {
         "executive_summary": _summary(sections),
         "what_changed": _changed(sections),
-        "top_opportunities": _names(sections["top_opportunities"]["rows"], "account_priority_score"),
+        "top_opportunities": _top_accounts(sections["top_opportunities"]["rows"], brief.get("as_of")),
         "why_now": _why(activity),
         "market_movement": (
             f"Observed plumbing permits, last 30 days versus the prior 30: "
@@ -213,13 +213,36 @@ def _changed(sections: dict) -> str:
     return "\n".join(lines)
 
 
-def _names(rows: list, score_key: str) -> str:
+def _top_accounts(rows: list, as_of) -> str:
+    """Stored account priority is account fit, not current buying intent. Each
+    line says when the account last had relevant activity, and says so plainly
+    when that is outside the 30-day window."""
     if not rows:
         return "No plumbing specialist or recurring-plumbing priority rows."
-    return "\n".join(
-        f"- {row['company_name']} (company {row['company_id']}, stored priority {row.get(score_key)})"
-        for row in rows[:5]
-    )
+    from datetime import date
+
+    try:
+        today = date.fromisoformat(str(as_of)[:10])
+    except ValueError:
+        today = None
+    lines = ["Ranked by stored account priority (account fit). This is not current buying intent."]
+    for row in rows[:5]:
+        last = str(row.get("most_recent_relevant_date") or "")[:10]
+        try:
+            age = (today - date.fromisoformat(last)).days if today and last else None
+        except ValueError:
+            age = None
+        if age is None:
+            recency = "no dated relevant activity on record"
+        elif age > 30:
+            recency = f"last relevant activity {last} ({age} days ago, outside the 30-day window)"
+        else:
+            recency = f"last relevant activity {last} ({age} days ago)"
+        lines.append(
+            f"- {row['company_name']} (company {row['company_id']}, stored priority "
+            f"{row.get('account_priority_score')}; {recency})"
+        )
+    return "\n".join(lines)
 
 
 def _why(activity: dict) -> str:

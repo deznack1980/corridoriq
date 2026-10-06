@@ -12,7 +12,7 @@
         <div class="cc-name" style="font-size:15px">${CIQ.esc(r.title)}</div>
         <div class="cc-reason">${CIQ.esc(r.description)}</div>
         <div class="cc-meta"><div><span>For</span>${CIQ.esc(r.audience)}</div>
-          <div><span>Latest</span>${latest ? CIQ.fmtDate(latest.generated_at) : "Not generated"}</div></div>
+          <div><span>Latest</span>${latest ? CIQ.fmtDate(latest.generated_at) : "Not generated"}${latest && latest.predates_latest_refresh ? ' <span class="badge amber" title="Generated before the latest data refresh">Older than latest data</span>' : ""}</div></div>
         <div class="cc-quick">${latest
           ? `<a class="btn btn-sm btn-primary" href="/api/reports/download?name=${encodeURIComponent(latest.name)}">Download ${CIQ.esc(latest.type)}</a>`
           : `<button class="btn btn-sm" disabled>No file yet</button>`}</div>
@@ -30,7 +30,7 @@
       <tbody>${files.map((f) => `<tr>
         <td data-label="Report">${CIQ.esc(f.name)}</td>
         <td data-label="Type"><span class="badge slate">${CIQ.esc(f.type)}</span></td>
-        <td data-label="Generated">${CIQ.fmtDateTime(f.generated_at)}</td>
+        <td data-label="Generated">${CIQ.fmtDateTime(f.generated_at)}${f.predates_latest_refresh ? ` <span class="badge amber" title="${CIQ.esc(f.freshness_note || "")}">Older than latest data</span>` : ""}</td>
         <td data-label="Size">${f.size_kb} KB</td>
         <td data-label=""><a class="btn btn-sm" href="/api/reports/download?name=${encodeURIComponent(f.name)}">Download</a></td>
       </tr>`).join("")}</tbody></table></div>`;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -81,7 +82,8 @@ def test_valid_brief_is_current_when_it_matches_the_refresh(tmp_path):
         "INSERT INTO pipeline_runs (id, run_type, status, completed_at) VALUES (4, 'morning_refresh', 'succeeded', ?)",
         ("2026-10-05T03:01:00",),
     )
-    view = load_owner_brief_view(reports_conn=conn, directory=tmp_path)
+    now = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+    view = load_owner_brief_view(reports_conn=conn, directory=tmp_path, now=now)
     assert view["available"] is True
     assert view["current"] is True
     assert view["execute"] is False
@@ -219,8 +221,12 @@ def test_navigation_is_only_in_the_admin_menu():
     manager = text.split("if (isManager)")[1].split("if (isEstimator)")[0]
     assert "ceo-morning-brief.html" in admin
     assert "ceo-morning-brief.html" not in manager
+    # The menu item needs the owner-only permission, not admin.system.
+    item = next(line for line in admin.splitlines() if "ceo-morning-brief.html" in line)
+    assert 'perm: "owner.ceo_agent"' in item
     page = (ROOT / "ceo-morning-brief.js").read_text(encoding="utf-8")
-    assert 'CIQ.guard("admin.system"' in page
+    assert 'CIQ.guard("owner.ceo_agent"' in page
+    assert 'CIQ.guard("admin.system"' not in page
     assert static_target("/ceo-morning-brief.html")[0] is not None
     assert static_target("/ceo-morning-brief.js")[0] is not None
 
@@ -254,7 +260,8 @@ def http_server(tmp_path, monkeypatch):
     seed_auth(conn)
     org = conn.execute("SELECT id FROM organizations WHERE slug='corridoriq'").fetchone()["id"]
     users = (
-        ("owner@corridoriq.com", "OwnerPass123", ["admin"]),
+        ("owner@corridoriq.com", "OwnerPass123", ["admin", "owner"]),
+        ("admin2@corridoriq.com", "Admin2Pass123", ["admin"]),
         ("rep@corridoriq.com", "RepPass123", ["sales_representative"]),
         ("manager@corridoriq.com", "MgrPass123", ["sales_manager"]),
         ("reader@corridoriq.com", "ReadPass123", ["read_only"]),
@@ -359,6 +366,7 @@ def test_owner_can_read_the_brief_and_other_roles_cannot(http_server, tmp_path):
     assert "PLANTED-HEALTH-INCIDENT" not in json.dumps(contractor_body)
     assert "overall_status" not in json.dumps(contractor_body)
     for email, password in (
+        ("admin2@corridoriq.com", "Admin2Pass123"),  # admin.system without owner.ceo_agent
         ("rep@corridoriq.com", "RepPass123"),
         ("manager@corridoriq.com", "MgrPass123"),
         ("reader@corridoriq.com", "ReadPass123"),
