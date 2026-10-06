@@ -38,14 +38,15 @@
     const opps = data.recent_opportunity_activity || [];
     const oel = document.getElementById("opps");
     if (!opps.length) {
-      oel.innerHTML = CIQ.emptyState({ title: "No recent opportunity activity" });
+      oel.innerHTML = CIQ.emptyState({ title: "No opportunity activity in the last 60 days" });
     } else {
       oel.innerHTML = `<div class="table-wrap"><table class="tbl responsive"><thead><tr>
-        <th>Company</th><th>Lifecycle</th><th>Priority</th>
+        <th>Company</th><th>Lifecycle</th><th>Priority</th><th>Last activity</th>
         </tr></thead><tbody>${opps.map((o) => `<tr>
           <td data-label="Company">${CIQ.esc(o.display_name || "—")}</td>
           <td data-label="Lifecycle">${CIQ.esc(o.project_lifecycle || "—")}</td>
           <td data-label="Priority">${CIQ.bandBadge(o.opportunity_score)}</td>
+          <td data-label="Last activity">${CIQ.activityAge(o)} ${CIQ.freshnessBadge(o)}</td>
         </tr>`).join("")}</tbody></table></div>`;
     }
   }

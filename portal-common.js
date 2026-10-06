@@ -45,6 +45,9 @@
       try { perms = JSON.parse(perms); } catch (e) { perms = []; }
     }
     if (!Array.isArray(perms)) perms = perms ? Array.from(perms) : [];
+    // Owner-only permissions (owner.*) are never implied by admin.system. The
+    // server enforces this; the menu mirrors it.
+    if (String(key).indexOf("owner.") === 0) return perms.includes(key);
     return perms.includes("admin.system") || perms.includes(key);
   };
   CIQ.logout = async function () {
@@ -94,7 +97,7 @@
       return [
         { label: null, items: [
           { href: "admin-dashboard.html", label: "Dashboard", icon: "▦" },
-          { href: "ceo-morning-brief.html", label: "CEO Morning Brief", icon: "☀", perm: "admin.system" },
+          { href: "ceo-morning-brief.html", label: "CEO Morning Brief", icon: "☀", perm: "owner.ceo_agent" },
           { href: "opportunities.html", label: "Opportunities", icon: "◎", perm: "projects.view" },
           { href: "my-companies.html", label: "Companies", icon: "⌂", perm: "companies.view" },
           { href: "estimator-work-queue.html", label: "Estimates", icon: "$", perm: "projects.view" },
@@ -752,6 +755,23 @@
   CIQ.bandBadge = function (score) {
     const b = CIQ.oppBand(score);
     return `<span class="band ${b.key}">${CIQ.esc(b.label)}</span>`;
+  };
+
+  // Server-computed recency / source-freshness labels (pipeline.trust.recency).
+  // A score band is not current buying intent; this says how current the
+  // underlying permit activity and its city feed are.
+  CIQ.freshnessBadge = function (p) {
+    if (!p) return "";
+    const tip = p.freshness_note ? ` title="${CIQ.esc(p.freshness_note)}"` : "";
+    if (p.source_stale) return `<span class="badge red"${tip}>City feed not current</span>`;
+    if (p.recency && p.recency !== "RECENT")
+      return `<span class="badge amber"${tip}>${CIQ.esc(p.recency_label || "Not recent")}</span>`;
+    return "";
+  };
+  CIQ.activityAge = function (p) {
+    if (!p || !p.activity_date) return "—";
+    const days = p.days_since_activity;
+    return `${CIQ.fmtDate(p.activity_date)}${days != null ? ` · ${days} day${days === 1 ? "" : "s"} ago` : ""}`;
   };
 
   // Readable place names for jurisdiction codes in server text ("phoenix_az").

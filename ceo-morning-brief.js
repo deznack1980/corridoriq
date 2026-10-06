@@ -1,4 +1,5 @@
-/* Owner/admin CEO Morning Brief. The API enforces access; this page only renders it. */
+/* Owner-only CEO Morning Brief (owner.ceo_agent). The server enforces access to
+   this page and its API; this page only renders it. */
 (function () {
   const CLAIM_COLOR = {
     FACT: "green",
@@ -91,7 +92,8 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    const user = await CIQ.guard("admin.system", {
+    // Owner only. The server refuses the page and the API to everyone else.
+    const user = await CIQ.guard("owner.ceo_agent", {
       title: "CEO Morning Brief",
       subtitle: "Owner only",
       active: "ceo-morning-brief.html",

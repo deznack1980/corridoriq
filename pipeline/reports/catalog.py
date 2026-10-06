@@ -69,9 +69,47 @@ def list_generated_files() -> list[dict]:
     return out
 
 
+def _latest_successful_refresh(conn: sqlite3.Connection) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT completed_at FROM pipeline_runs WHERE status IN ('succeeded','success','completed') "
+            "AND completed_at IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return None
+    return row[0] if row else None
+
+
+def _parse(value: str | None):
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def label_freshness(files: list[dict], latest_refresh: str | None) -> None:
+    """Mark generated files that predate the latest successful data refresh.
+
+    Generated reports are point-in-time files that a refresh does not rebuild,
+    so an older file can describe data that has since changed. Files are never
+    deleted or hidden here; they are labelled."""
+    ref = _parse(latest_refresh)
+    for f in files:
+        made = _parse(f.get("generated_at"))
+        f["predates_latest_refresh"] = bool(ref and made and made < ref)
+        f["freshness_note"] = (
+            "Generated before the latest data refresh; it may not match current data."
+            if f["predates_latest_refresh"] else None)
+
+
 def catalog(conn: sqlite3.Connection, user: dict) -> dict:
     require_permission(user, "reports.view")
-    return {"reports": REPORT_CARDS, "files": list_generated_files()}
+    files = list_generated_files()
+    latest = _latest_successful_refresh(conn)
+    label_freshness(files, latest)
+    return {"reports": REPORT_CARDS, "files": files, "latest_successful_refresh": latest}
 
 
 def safe_generated_path(name: str):

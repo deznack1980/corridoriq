@@ -13,8 +13,10 @@ from pipeline.auth.service import write_audit
 from pipeline.company_resolution import queries as ci_queries
 from pipeline.crm import scan_cache, serializers
 from pipeline.trust import account_view as trust
+from pipeline.trust import recency
 from pipeline.trust.contacts import verified_contact_view
 from pipeline.trust.public import public_relevance
+from pipeline.trust.singleflight import SingleFlightCache
 
 RELATIONSHIP_STATUSES = {
     "new", "assigned", "researching", "attempted_contact", "contacted",
@@ -735,7 +737,9 @@ def dashboard(conn: sqlite3.Connection, user: dict) -> dict:
         f"{assigned_filter} AND r.relationship_status='assigned'",
         base_params)
     rel_join, rel_rank, rel_params = trust.relevance_sql("r.company_id")
-    high_priority_opps = _scalar(
+    # Account fit (plumbing / fuel-gas lanes). This is not current buying
+    # intent, so it is reported under its own name, not as "high priority".
+    core_accounts = _scalar(
         f"SELECT COUNT(*) AS n FROM crm_company_relationships r {rel_join} "
         f"WHERE r.organization_id=? {assigned_filter} AND {rel_rank} = {trust.RANK[trust.CORE]}",
         [*rel_params, *base_params])
@@ -770,7 +774,11 @@ def dashboard(conn: sqlite3.Connection, user: dict) -> dict:
             "calls_due_today": calls_due_today,
             "overdue_followups": overdue_followups,
             "new_assigned_companies": new_assignments,
-            "high_priority_opportunities": high_priority_opps,
+            # Same rule as the admin dashboard: accounts that passed every
+            # trust gate today (fresh source, recent activity, verified
+            # identity and contact), not account fit.
+            "high_priority_opportunities": len(today_accounts["items"]),
+            "core_relevance_accounts": core_accounts,
             "appointments_scheduled": appointments,
             "quotes_requested": quotes_requested,
             "tasks_due_today": tasks_due,
@@ -852,11 +860,18 @@ def followups_due(conn: sqlite3.Connection, user: dict, *, limit: int = 50,
 
 def recent_opportunity_activity(conn: sqlite3.Connection, user: dict, *,
                                 limit: int = 20) -> list[dict]:
-    """Recently active projects tied to the user's assigned companies."""
+    """Recently active projects tied to the user's assigned companies.
+
+    Only projects with a source activity date inside the recent window
+    (recency.window_bounds) appear, newest first, each labelled with its age
+    and its feed's freshness. Undated or older projects stay in the company
+    history; they are not "recent"."""
     require_permission(user, "crm.relationships.view")
     org_id = user["organization_id"]
-    where = ["r.organization_id=?"]
-    params: list = [org_id]
+    start, end = recency.window_bounds()
+    where = ["r.organization_id=?", f"{recency.ACTIVITY_DATE_SQL} >= ?",
+             f"{recency.ACTIVITY_DATE_SQL} <= ?"]
+    params: list = [org_id, start, end]
     if not has_permission(user, "companies.view"):
         where.append("r.assigned_user_id=?")
         params.append(user["id"])
@@ -866,16 +881,61 @@ def recent_opportunity_activity(conn: sqlite3.Connection, user: dict, *,
                p.jurisdiction, p.job_address, p.city, pr.project_lifecycle,
                pr.opportunity_score, pr.opportunity_date, pr.opportunity_timing,
                pr.project_category, p.permit_type, p.permit_subtype, p.description,
-               p.project_description
+               p.project_description, p.issued_date, p.filed_date
         FROM crm_company_relationships r
         JOIN companies c ON c.id=r.company_id
         JOIN projects pr ON pr.contractor_company_id=c.id
         JOIN permits p ON p.id=pr.permit_id
         WHERE {' AND '.join(where)}
-        ORDER BY pr.opportunity_date DESC LIMIT ?
+        ORDER BY {recency.ACTIVITY_DATE_SQL} DESC, pr.id DESC LIMIT ?
         """,
         [*params, limit * 20]).fetchall()
-    return trust.annotate_projects([dict(r) for r in rows], conn=conn)[:limit]
+    items = trust.annotate_projects([dict(r) for r in rows], conn=conn)[:limit]
+    _attach_recency(conn, items)
+    return items
+
+
+# Separate from scan_cache: the source reading is shared by every feed and
+# keyed by refresh + day, not by a feed's filters.
+_SOURCE_HEALTH = SingleFlightCache(max_entries=4)
+
+
+def source_health(conn: sqlite3.Connection, now: datetime | None = None) -> dict | None:
+    """The trust-layer source freshness reading (the one that gates Today's
+    accounts), shared by every feed. Cached per database, refresh, newest
+    permit, and UTC day. None when it cannot be read: callers then label every
+    row's source as NO_DATA (fail closed)."""
+    from pipeline.trust.health import collect_health
+
+    now = now or datetime.now(timezone.utc)
+    key = None
+    path = scan_cache.db_file(conn)
+    if path is not None:
+        try:
+            run = conn.execute(
+                "SELECT id, completed_at FROM pipeline_runs WHERE status IN "
+                "('succeeded','success','completed') ORDER BY id DESC LIMIT 1").fetchone()
+            top = conn.execute("SELECT MAX(id) FROM permits").fetchone()[0]
+            key = ("source_health", path, None if run is None else tuple(run), top,
+                   recency.utc_today(now).isoformat())
+        except sqlite3.Error:
+            key = None
+    try:
+        return _SOURCE_HEALTH.get_or_compute(key, lambda: collect_health(conn, now))
+    except sqlite3.Error:
+        return None
+
+
+def _attach_recency(conn: sqlite3.Connection, items: list[dict], health: dict | None = None,
+                    *, now: datetime | None = None) -> None:
+    """Label each row with its source-date age and feed freshness, then drop
+    the raw date columns the labels were built from."""
+    if health is None:
+        health = source_health(conn, now)
+    recency.attach(items, health, recency.utc_today(now))
+    for it in items:
+        it.pop("issued_date", None)
+        it.pop("filed_date", None)
 
 
 def activity_summary(conn: sqlite3.Connection, user: dict, *, days: int = 30) -> dict:
@@ -913,11 +973,17 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
     """Projects in an explicit context, ranked by opportunity score.
 
     context=assigned (default): projects of companies with a CRM relationship
-    (reps: only their own). context=organization: every project in the recent
-    trust window, attributed or not; needs companies.view. Both contexts apply
-    the same trust-layer project checks; scope=all shows everything, labelled.
-    The dashboard's Top Opportunities is page 1 of this same call, and the
-    opportunity map is all_rows=True of it (every row, unpaged, same filters)."""
+    (reps: only their own). context=organization: every project, attributed or
+    not; needs companies.view. Both contexts are limited to the same recent
+    window on source activity dates (recency.window_bounds: issued, else filed,
+    else stored opportunity date; never an ingestion time), so an old permit
+    cannot rank as a current opportunity. recency=all lifts that window for the
+    assigned context only, to review account history; those rows are labelled
+    HISTORICAL. Every row carries its age and its feed's freshness. Both
+    contexts apply the same trust-layer project checks; scope=all shows every
+    trade scope, labelled. The dashboard's Top Opportunities is page 1 of this
+    same call, and the opportunity map is all_rows=True of it (every row,
+    unpaged, same filters)."""
     require_permission(user, "projects.view_assigned")
     from pipeline.config import settings as _s
     filters = filters or {}
@@ -943,6 +1009,9 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
     # Projects that name only a non-wet trade, or belong to an account outside the
     # plumbing-supply focus, are hidden unless scope=all. Ranking is unchanged.
     include_all = str(filters.get("scope") or "").lower() == "all"
+    history = context == "assigned" and str(filters.get("recency") or "").lower() == "all"
+    start, end = recency.window_bounds()
+    recent = [f"{recency.ACTIVITY_DATE_SQL} >= ?", f"{recency.ACTIVITY_DATE_SQL} <= ?"]
 
     if context == "assigned":
         where = ["r.organization_id=?"]
@@ -950,12 +1019,15 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
         if not has_permission(user, "companies.view"):
             where.append("r.assigned_user_id=?")
             params.append(user["id"])
+        if not history:
+            where += recent
+            params += [start, end]
         source = ("FROM crm_company_relationships r JOIN companies c ON c.id=r.company_id "
                   "JOIN projects pr ON pr.contractor_company_id=c.id JOIN permits p ON p.id=pr.permit_id")
         company_col = "r.company_id"
     else:
-        where = [f"substr(COALESCE(NULLIF(TRIM(p.issued_date),''), p.filed_date, pr.opportunity_date),1,10) >= ?"]
-        params = [_window_start()]
+        where = list(recent)
+        params = [start, end]
         source = ("FROM projects pr JOIN permits p ON p.id=pr.permit_id "
                   "LEFT JOIN companies c ON c.id=COALESCE(pr.contractor_company_id, p.contractor_company_id)")
         company_col = "c.id"
@@ -967,7 +1039,8 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
                p.description, p.project_description, p.permit_type, p.permit_subtype,
                pr.project_category, pr.project_lifecycle,
                pr.opportunity_score, pr.opportunity_date, pr.opportunity_timing,
-               pr.estimated_material_value, p.latitude, p.longitude, p.raw_source_json
+               pr.estimated_material_value, p.latitude, p.longitude, p.raw_source_json,
+               p.issued_date, p.filed_date
         {source}
         WHERE {where_sql}
         ORDER BY COALESCE(pr.opportunity_score,0) DESC, pr.opportunity_date DESC
@@ -978,8 +1051,10 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
     # and the map (requested together) run them once. The key holds everything
     # the scan reads, so a cached result equals a fresh one.
     sig = scan_cache.data_signature(conn, org_id)
+    # end (today) is in the key even when the window is lifted: the age labels
+    # attached by the scan are computed for that day.
     scope_key = (context, org_id, None if has_permission(user, "companies.view") else user["id"],
-                 where_sql, tuple(all_params), include_all)
+                 where_sql, tuple(all_params), include_all, end)
 
     def _count() -> int:
         return conn.execute(f"SELECT COUNT(*) AS n {source} WHERE {where_sql}", all_params).fetchone()["n"]
@@ -988,6 +1063,7 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
         rows = conn.execute(select_sql, [*all_params, _SCOPE_SCAN_LIMIT, 0]).fetchall()
         scanned = trust.annotate_projects([dict(r) for r in rows], include_all=include_all, conn=conn)
         _attach_locations(scanned)
+        _attach_recency(conn, scanned)
         return tuple(scanned)
 
     total = scan_cache.get_or_compute(None if sig is None else ("count", sig, scope_key), _count)
@@ -1003,6 +1079,7 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
         rows = conn.execute(select_sql, [*all_params, page_size, (page - 1) * page_size]).fetchall()
         items = trust.annotate_projects([dict(r) for r in rows], include_all=include_all, conn=conn)
         _attach_locations(items)
+        _attach_recency(conn, items)
     else:
         scanned = scan_cache.get_or_compute(None if sig is None else ("scan", sig, scope_key), _scan)
         # With scope=all the total is the SQL count; otherwise it is what passed the
@@ -1016,10 +1093,15 @@ def opportunities(conn: sqlite3.Connection, user: dict, filters: dict | None = N
     scan_limited = before_checks > _SCOPE_SCAN_LIMIT and (not include_all or all_rows)
     _attach_permit_counts_and_contacts(conn, items, permit_counts=not all_rows)
     reason, message = _empty_reason(conn, user, context, filtered=bool(extra), total=total,
-                                    before_checks=before_checks, include_all=include_all)
+                                    before_checks=before_checks, include_all=include_all,
+                                    history=history)
     hidden = before_checks - total if not include_all and before_checks <= _SCOPE_SCAN_LIMIT else None
     return {"items": items, "total": total, "page": page, "context": context,
             "include_all_scopes": include_all, "hidden_by_checks": hidden,
+            "recency_window": {"start": None if history else start, "end": None if history else end,
+                               "days": None if history else recency.REVIEW_WINDOW_DAYS,
+                               "history_included": history},
+            "stale_source_rows": sum(1 for i in items if i.get("source_stale")),
             "candidates": before_checks, "scan_limit": _SCOPE_SCAN_LIMIT if scan_limited else None,
             "empty_reason": reason, "empty_message": message,
             "page_size": page_size, "pages": (total + page_size - 1) // page_size if page_size else 1}
@@ -1046,6 +1128,12 @@ def opportunity_map(conn: sqlite3.Connection, user: dict, filters: dict | None =
             "job_address": it.get("job_address"), "jurisdiction": it.get("jurisdiction"),
             "trade_scope": it.get("trade_scope"), "opportunity_score": it.get("opportunity_score"),
             "opportunity_date": it.get("opportunity_date"),
+            "activity_date": it.get("activity_date"),
+            "days_since_activity": it.get("days_since_activity"),
+            "recency": it.get("recency"),
+            "source_freshness": it.get("source_freshness"),
+            "source_stale": it.get("source_stale"),
+            "freshness_note": it.get("freshness_note"),
             "account_relevance": it.get("account_relevance"),
             "contact": {"status": c.get("status"), "label": c.get("label"),
                         "name": c.get("name"), "phone": c.get("phone"), "email": c.get("email")},
@@ -1054,7 +1142,7 @@ def opportunity_map(conn: sqlite3.Connection, user: dict, filters: dict | None =
     # total is always the feed's total; placed + unplaced + not_loaded == total.
     return {
         "context": feed["context"], "include_all_scopes": feed["include_all_scopes"],
-        "total": feed["total"], "placed": len(points), "unplaced": sum(unplaced.values()),
+        "recency_window": feed["recency_window"], "total": feed["total"], "placed": len(points), "unplaced": sum(unplaced.values()),
         "not_loaded": feed["total"] - len(feed["items"]),
         "candidates": feed["candidates"], "scan_limit": feed["scan_limit"],
         "unplaced_by_jurisdiction": dict(unplaced.most_common()),
@@ -1066,10 +1154,7 @@ def opportunity_map(conn: sqlite3.Connection, user: dict, filters: dict | None =
 
 
 def _window_start() -> str:
-    from datetime import timedelta
-
-    from pipeline.trust.gates import REVIEW_WINDOW_DAYS
-    return (datetime.now(timezone.utc) - timedelta(days=REVIEW_WINDOW_DAYS)).strftime("%Y-%m-%d")
+    return recency.window_bounds()[0]
 
 
 def _attach_locations(items: list[dict]) -> None:
@@ -1111,7 +1196,8 @@ def _attach_permit_counts_and_contacts(conn: sqlite3.Connection, items: list[dic
         it["contact"] = cache[cid]
 
 
-def _empty_reason(conn, user, context, *, filtered, total, before_checks, include_all):
+def _empty_reason(conn, user, context, *, filtered, total, before_checks, include_all,
+                  history=False):
     if total:
         return None, None
     if context == "assigned":
@@ -1130,13 +1216,19 @@ def _empty_reason(conn, user, context, *, filtered, total, before_checks, includ
     if filtered:
         return "FILTERED", "No opportunities match the current search or filters."
     if before_checks and not include_all:
-        scope = "these companies" if context == "assigned" else "the last 60 days"
+        scope = ("these companies" if history
+                 else f"the last {recency.REVIEW_WINDOW_DAYS} days" if context == "organization"
+                 else f"these companies' last {recency.REVIEW_WINDOW_DAYS} days")
         return "NONE_PASS_CHECKS", (
             f"{before_checks} project{'s' if before_checks != 1 else ''} in {scope} did not pass the "
             "plumbing-supply checks (the permit names only non-wet work, or the account is outside the "
             "plumbing-supply focus). Choose \"Include all scopes\" to review them.")
-    return "NO_PROJECTS", ("There are no current projects for these companies." if context == "assigned"
-                           else "There are no projects in the last 60 days.")
+    if context == "assigned" and not history:
+        return "NO_PROJECTS", (f"These companies have no permit activity in the last "
+                               f"{recency.REVIEW_WINDOW_DAYS} days. Older projects are history, not "
+                               "current opportunities; choose \"Include older history\" to review them.")
+    return "NO_PROJECTS", ("There are no projects for these companies." if context == "assigned"
+                           else f"There are no projects in the last {recency.REVIEW_WINDOW_DAYS} days.")
 
 
 def my_activity(conn: sqlite3.Connection, user: dict, filters: dict | None = None) -> dict:

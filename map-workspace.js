@@ -41,7 +41,7 @@
       <div>${CIQ.esc(p.job_address || p.permit_number || "")} · ${CIQ.esc(CIQ.placeName(p.jurisdiction))}</div>
       <div><span class="muted">Trade:</span> ${CIQ.esc(CIQ.titleCase(p.trade_scope || "—"))}</div>
       <div style="margin-top:4px">${CIQ.bandBadge(p.opportunity_score)}
-        <span class="muted" style="margin-left:6px">${p.opportunity_date ? CIQ.fmtDate(p.opportunity_date) : ""}</span></div>
+        <span class="muted" style="margin-left:6px">${CIQ.activityAge(p)}</span> ${CIQ.freshnessBadge(p)}</div>
       <div style="margin-top:4px">${contactHtml(p.contact)}</div>${approx}</div>`;
   }
 
@@ -175,6 +175,7 @@
           </div>
           <div class="muted">${CIQ.esc(p.job_address || p.permit_number || "")} · ${CIQ.esc(CIQ.placeName(p.jurisdiction))}</div>
           <div>${CIQ.esc(CIQ.titleCase(p.trade_scope || "—"))}${p.location ? "" : ' · <span class="badge amber">Location not available</span>'}</div>
+          <div class="muted">Last activity ${CIQ.activityAge(p)} ${CIQ.freshnessBadge(p)}</div>
           <div class="mw-item-contact">${contactHtml(p.contact)}</div>
         </div>`).join("");
     }

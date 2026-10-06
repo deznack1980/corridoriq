@@ -108,7 +108,7 @@
     const P = window.CIQP, s = P.supplier(sid);
     const ok = await CIQ.confirm(
       `Select ${s.name}? Demonstration only — no order will be placed and no supplier will be notified.`,
-      { confirmLabel: "Select supplier" });
+      { confirmLabel: "Select supplier (sample)" });
     if (!ok) return;
     P.update({ selected: sid, selectedAt: new Date().toISOString() });
     CIQ.toast(`${s.name} selected (sample).`, "success");

@@ -8,16 +8,28 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
-from agents.ceo.analytics.health import evaluate_system_health, incomplete_health, load_health_record
+from agents.ceo.analytics.health import (
+    LABELS as HEALTH_LABELS,
+    evaluate_system_health,
+    incomplete_health,
+    load_health_record,
+)
+from agents.ceo.analytics.limits import REFRESH_CURRENT_HOURS
 from agents.ceo.analytics.publish import read_status, required_display_ids
 
 MISSING_MESSAGE = "No CEO Morning Brief is available yet."
 MALFORMED_MESSAGE = "The latest brief file could not be validated, so it is not shown."
 
 
-def load_owner_brief_view(*, reports_conn: sqlite3.Connection, directory: Path) -> dict:
+def load_owner_brief_view(*, reports_conn: sqlite3.Connection, directory: Path,
+                          now: datetime | None = None) -> dict:
+    """``now`` is injectable for tests; it defaults to the current UTC time.
+    A brief or health record is current only if its refresh finished within
+    REFRESH_CURRENT_HOURS of ``now``."""
+    now = now or datetime.now(timezone.utc)
     latest_run = _latest_refresh(reports_conn)
     status = read_status(directory)
     brief = _valid_brief(directory / "latest_daily_brief.json")
@@ -39,10 +51,10 @@ def load_owner_brief_view(*, reports_conn: sqlite3.Connection, directory: Path) 
             "sections": [],
             "latest_refresh": _public_run(latest_run),
             "latest_attempt": _public_attempt(status.get("latest_attempt")),
-            "health": resolve_health(directory, reports_conn),
+            "health": resolve_health(directory, reports_conn, now=now),
         }
     provenance = brief["provenance"]
-    current, notice = _currency(provenance, latest_run, status.get("latest_attempt"), source)
+    current, notice = _currency(provenance, latest_run, status.get("latest_attempt"), source, now)
     return {
         "available": True,
         "current": current,
@@ -55,12 +67,17 @@ def load_owner_brief_view(*, reports_conn: sqlite3.Connection, directory: Path) 
         "sections": brief["display"],
         "latest_refresh": _public_run(latest_run),
         "latest_attempt": _public_attempt(status.get("latest_attempt")),
-        "health": resolve_health(directory, reports_conn),
+        "health": resolve_health(directory, reports_conn, now=now),
     }
 
 
-def resolve_health(directory: Path, reports_conn: sqlite3.Connection) -> dict:
-    """Owner health for the page. A malformed file is not treated as healthy."""
+def resolve_health(directory: Path, reports_conn: sqlite3.Connection, *,
+                   now: datetime | None = None) -> dict:
+    """Owner health for the page. A malformed file is not treated as healthy,
+    and neither is a stored record older than REFRESH_CURRENT_HOURS: health is
+    only re-checked when a refresh runs, so an old "healthy" record says
+    nothing about today."""
+    now = now or datetime.now(timezone.utc)
     record, notice = load_health_record(directory)
     if record is None:
         live = _live_health(reports_conn)
@@ -75,9 +92,32 @@ def resolve_health(directory: Path, reports_conn: sqlite3.Connection) -> dict:
             live["current"] = True
         return live
     record = dict(record)
+    age = _hours_since(record.get("checked_at"), now)
+    if age is None or age > REFRESH_CURRENT_HOURS:
+        when = record.get("checked_at") or "an unknown time"
+        stale_notice = (f"This health check ran at {when}, more than {REFRESH_CURRENT_HOURS} hours ago. "
+                        "Health is re-checked only when a refresh runs, so it may not reflect today.")
+        notice = f"{notice} {stale_notice}" if notice else stale_notice
+        if record.get("overall_status") == "healthy":
+            # Never show an out-of-date record as healthy.
+            record["recorded_overall_status"] = "healthy"
+            record["overall_status"] = "unknown"
+            record["label"] = HEALTH_LABELS["unknown"]
     record["artifact_notice"] = notice
     record["current"] = notice is None
     return record
+
+
+def _hours_since(value, now: datetime) -> float | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (now - parsed).total_seconds() / 3600
 
 
 def _live_health(reports_conn: sqlite3.Connection) -> dict | None:
@@ -158,7 +198,8 @@ def _newest_valid_history(history: Path) -> dict | None:
     return None
 
 
-def _currency(provenance: dict, latest_run, attempt, source: str) -> tuple[bool, str | None]:
+def _currency(provenance: dict, latest_run, attempt, source: str,
+              now: datetime | None = None) -> tuple[bool, str | None]:
     brief_run = provenance.get("refresh_run_id")
     if source == "history":
         return False, (
@@ -176,7 +217,21 @@ def _currency(provenance: dict, latest_run, attempt, source: str) -> tuple[bool,
                 f"Latest refresh {completed} succeeded, and brief generation failed. "
                 "This page is not treating that failure as a new brief."
             )
+        # Matching the latest refresh is not enough: if no refresh has run
+        # since, that refresh (and this brief) can be days old.
+        age = _hours_since(completed, now or datetime.now(timezone.utc))
+        if age is None or age > REFRESH_CURRENT_HOURS:
+            return False, (
+                f"The latest refresh finished at {completed or 'an unknown time'}, more than "
+                f"{REFRESH_CURRENT_HOURS} hours ago, and no newer refresh has finished. "
+                "This brief may be out of date."
+            )
         return True, None
+    if latest_status == "running":
+        return False, (
+            f"A refresh is in progress. The brief below is from refresh {brief_run} "
+            "and does not include it."
+        )
     if latest_status != "succeeded":
         return False, (
             f"Latest refresh {completed} finished as {latest_status}. "

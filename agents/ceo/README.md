@@ -149,7 +149,7 @@ python -m agents.ceo daily-brief --db PATH --as-of YYYY-MM-DD [--organization N]
 
 `daily-brief` writes `latest_daily_brief.json` and `latest_daily_brief.md` under `CEO_OUTPUT_DIR/intelligence/` unless `--no-write` is set. `schedule()` raises. Production scheduling is off. Supplier and customer-book questions require an explicit organization id; the model does not choose the tenant. Material-request stores are not opened.
 
-A succeeded morning refresh publishes the owner brief after the run row is committed. The owner admin page is `ceo-morning-brief.html`, backed by `GET /api/admin/ceo-morning-brief` (`admin.system` only). Copies of each successful brief are kept in `intelligence/history/`. A failed refresh does not publish a new brief. A brief failure does not change the refresh status.
+A succeeded morning refresh publishes the owner brief after the run row is committed. The owner admin page is `ceo-morning-brief.html`, backed by `GET /api/admin/ceo-morning-brief`. Both the page and the API require the owner-only `owner.ceo_agent` permission (the `owner` role); `admin.system` alone is refused. Grant it with `python -m pipeline.auth.grant_owner --email <owner email>`. Copies of each successful brief are kept in `intelligence/history/`. A failed refresh does not publish a new brief. A brief failure does not change the refresh status.
 
 ## Output class
 

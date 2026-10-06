@@ -114,6 +114,11 @@ _BILLING_PREFIX = "/api/billing/"
 _BILLING_WEBHOOK = "/api/billing/stripe/webhook"
 _BILLING_MAX_ACTION_BODY = 16 * 1024
 
+# CEO Agent (owner only). The page files are served only after the same
+# server-side owner check as the API, so a typed URL reveals nothing.
+_CEO_PAGES = {"ceo-morning-brief.html", "ceo-morning-brief.js"}
+_CEO_API_ROUTES = {"/api/admin/ceo-morning-brief"}
+
 # Contractor pilot referral entry: /join/<public referral code>.
 _JOIN_RE = re.compile(r"^/join/[a-z0-9-]{4,40}/?$")
 _JOIN_PAGE = "contractor-join.html"
@@ -306,10 +311,44 @@ class ApiHandler(BaseHTTPRequestHandler):
             pass
 
     # ---- static portal ----------------------------------------------------
+    def _ceo_page_allowed(self, path: str) -> bool:
+        """Owner check for the CEO page files. Sends the refusal itself and
+        returns False when the request may not see them. Unauthenticated
+        requests go to login; signed-in non-owners get 403."""
+        from pipeline.auth.rbac import require_ceo_owner
+        conn = _factory()
+        try:
+            user = get_current_user(conn, self._token())
+            if user is None:
+                self.send_response(302)
+                self.send_header("Location", "/login.html")
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return False
+            if user.get("must_change_password"):
+                self._json(403, {"error": "password_change_required"})
+                return False
+            try:
+                require_ceo_owner(conn, user)
+            except AuthzError as exc:
+                self._deny(conn, user, path, str(exc))
+                self._json(exc.status, {"error": str(exc)})
+                return False
+            return True
+        except Exception:  # pragma: no cover - fail closed, never echo internals
+            self._json(500, {"error": "internal error"})
+            return False
+        finally:
+            conn.close()
+
     def _serve_static(self, path: str) -> bool:
         target, ctype = static_target(path)
         if target is None:
             return False
+        # Decided on the resolved file, so encoded or re-cased URLs are gated too.
+        if target.name.lower() in _CEO_PAGES and not self._ceo_page_allowed(path):
+            return True  # the refusal has been sent
         data = target.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", ctype)
@@ -530,11 +569,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             from pipeline.auth.rbac import require_permission
             require_permission(user, "pipeline.monitor")
             return self._json(200, pipeline_runs.admin_status(conn))
-        if path == "/api/admin/ceo-morning-brief":
-            from pipeline.auth.rbac import require_permission
+        if path in _CEO_API_ROUTES:
+            from pipeline.auth.rbac import require_ceo_owner
             from agents.ceo.analytics.serve import load_owner_brief_view
             from agents.ceo.paths import output_dir
-            require_permission(user, "admin.system")
+            # Owner only: admin.system is not enough (see rbac.OWNER_ONLY_PERMISSIONS).
+            require_ceo_owner(conn, user)
             return self._json(200, load_owner_brief_view(
                 reports_conn=conn, directory=output_dir() / "intelligence"))
 
