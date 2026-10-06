@@ -21,11 +21,11 @@
       <h1 class="ptitle" data-i18n="signup_title"></h1>
       <p class="lede" id="signupFor" hidden></p>
       <div class="msg err" id="signupErr" role="alert" hidden></div>
+      <div class="msg ok" id="signupOk" role="status" hidden></div>
       <div class="field"><label for="suName" data-i18n="f_name"></label><input id="suName" type="text" autocomplete="name" maxlength="120" required /></div>
       <div class="field"><label for="suBusiness" data-i18n="f_business"></label><input id="suBusiness" type="text" autocomplete="organization" maxlength="200" required /></div>
       <div class="field"><label for="suEmail" data-i18n="f_email"></label><input id="suEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required /></div>
       <div class="field"><label for="suPhone"><span data-i18n="f_phone"></span> <span class="muted">(<span data-i18n="optional"></span>)</span></label><input id="suPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="25" /></div>
-      <div class="field"><label for="suPassword" data-i18n="f_password"></label><input id="suPassword" type="password" autocomplete="new-password" minlength="8" maxlength="200" required /><span class="hint" data-i18n="f_password_hint"></span></div>
       <button class="btn primary block" type="submit" id="suSubmit" data-i18n="signup_submit"></button>
       <p class="muted" style="margin:14px 0 0" data-i18n="privacy_line"></p>
       <p style="margin:16px 0 0"><span data-i18n="have_account"></span> <a href="?mode=signin" data-i18n="sign_in"></a></p>
@@ -37,7 +37,39 @@
       <div class="field"><label for="siEmail" data-i18n="f_email"></label><input id="siEmail" type="email" autocomplete="email" inputmode="email" required /></div>
       <div class="field"><label for="siPassword" data-i18n="f_password"></label><input id="siPassword" type="password" autocomplete="current-password" required /></div>
       <button class="btn primary block" type="submit" id="siSubmit" data-i18n="signin_submit"></button>
+      <p style="margin:16px 0 0"><a href="?mode=forgot" data-i18n="forgot_link"></a></p>
       <p style="margin:16px 0 0"><span data-i18n="no_account"></span> <a href="?mode=signup" data-i18n="create_account"></a></p>
+    </form>
+
+    <form class="card" id="completeForm" novalidate hidden>
+      <h1 class="ptitle" data-i18n="complete_title"></h1>
+      <div class="msg err" id="completeErr" role="alert" hidden></div>
+      <div class="field"><label for="coPassword" data-i18n="f_password"></label><input id="coPassword" type="password" autocomplete="new-password" minlength="8" maxlength="200" required /><span class="hint" data-i18n="f_password_hint"></span></div>
+      <button class="btn primary block" type="submit" id="coSubmit" data-i18n="complete_submit"></button>
+    </form>
+
+    <form class="card" id="verifyForm" novalidate hidden>
+      <h1 class="ptitle" data-i18n="verify_title"></h1>
+      <div class="msg err" id="verifyErr" role="alert" hidden></div>
+      <div class="msg ok" id="verifyOk" role="status" hidden></div>
+      <button class="btn primary block" type="submit" id="veSubmit" data-i18n="verify_submit"></button>
+    </form>
+
+    <form class="card" id="forgotForm" novalidate hidden>
+      <h1 class="ptitle" data-i18n="forgot_title"></h1>
+      <div class="msg err" id="forgotErr" role="alert" hidden></div>
+      <div class="msg ok" id="forgotOk" role="status" hidden></div>
+      <div class="field"><label for="foEmail" data-i18n="f_email"></label><input id="foEmail" type="email" autocomplete="email" inputmode="email" required /></div>
+      <button class="btn primary block" type="submit" id="foSubmit" data-i18n="forgot_submit"></button>
+      <p style="margin:16px 0 0"><a href="?mode=signin" data-i18n="sign_in"></a></p>
+    </form>
+
+    <form class="card" id="resetForm" novalidate hidden>
+      <h1 class="ptitle" data-i18n="reset_title"></h1>
+      <div class="msg err" id="resetErr" role="alert" hidden></div>
+      <div class="msg ok" id="resetOk" role="status" hidden></div>
+      <div class="field"><label for="rePassword" data-i18n="f_password"></label><input id="rePassword" type="password" autocomplete="new-password" minlength="8" maxlength="200" required /><span class="hint" data-i18n="f_password_hint"></span></div>
+      <button class="btn primary block" type="submit" id="reSubmit" data-i18n="reset_submit"></button>
     </form>
   </main>
   <script src="/pilot-i18n.js"></script>

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS material_requests (
     title       TEXT NOT NULL,
     reference   TEXT,
     status      TEXT NOT NULL CHECK (status IN ('DRAFT', 'SENT')),
-    -- Frozen at creation from request_priority(billing organization for the session email). Not a service level.
+    -- Authoritative only after send. Draft values are a live preview and are re-evaluated at send.
     priority    TEXT NOT NULL DEFAULT 'standard' CHECK (priority IN ('priority', 'standard')),
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
@@ -76,7 +76,8 @@ def _store(platform, principal: Principal):
 
 
 # Billing lookup may read only these tables. Supplier intelligence stays closed.
-_BILLING_READ_TABLES = {"users", "organizations", "billing_accounts", "sqlite_master", "sqlite_schema"}
+_BILLING_READ_TABLES = {"users", "organizations", "billing_accounts", "user_roles", "roles",
+                       "sqlite_master", "sqlite_schema"}
 
 
 def _open_billing_lookup():
@@ -101,21 +102,36 @@ def _open_billing_lookup():
     return conn
 
 
-def _billing_organization_id(principal: Principal):
-    """The Contractor Pro organization for this session email, or None.
+def _pilot_verified_owner_email(pconn, principal: Principal) -> str | None:
+    """Verified contractor-owner email on the pilot store, or None."""
+    from pipeline.auth.service import email_is_verified, normalize_email
+    from pipeline.pilot.platform import ROLE_CONTRACTOR_OWNER
 
-    Exactly one active user in one active contractor organization matches.
-    Zero matches and more than one match both fail closed. The pilot-platform
-    organization is never treated as a billing organization. Client input is
-    not consulted.
+    if principal is None or principal.kind != "contractor" or principal.role != ROLE_CONTRACTOR_OWNER:
+        return None
+    if not (principal.user or {}).get("is_active", True):
+        return None
+    try:
+        row = pconn.execute("SELECT * FROM users WHERE id=?", (principal.user_id,)).fetchone()
+    except Exception:
+        return None
+    if row is None or not row["is_active"] or not email_is_verified(row):
+        return None
+    return normalize_email(row["normalized_email"])
+
+
+def _billing_organization_id(pconn, principal: Principal):
+    """The Contractor Pro organization for this verified owner email, or None.
+
+    Pilot email and the matching main contractor_owner must both be verified.
+    Exactly one eligible contractor organization matches. Zero or more than one
+    fail closed. The pilot-platform organization is never a billing organization.
+    Client input is not consulted.
     """
-    from pipeline.auth.service import normalize_email
+    from pipeline.auth.service import email_is_verified
 
-    if principal is None or principal.kind != "contractor":
-        return None, None
-    user = principal.user or {}
-    email = normalize_email(user.get("email") or "") if isinstance(user, dict) else ""
-    if "@" not in email:
+    email = _pilot_verified_owner_email(pconn, principal)
+    if not email:
         return None, None
     try:
         conn = _open_billing_lookup()
@@ -127,20 +143,32 @@ def _billing_organization_id(principal: Principal):
             SELECT u.organization_id
             FROM users u
             JOIN organizations o ON o.id = u.organization_id
+            JOIN user_roles ur ON ur.user_id = u.id
+            JOIN roles r ON r.id = ur.role_id
             WHERE u.normalized_email = ?
               AND u.is_active = 1
               AND o.is_active = 1
               AND o.account_type = 'contractor'
+              AND o.slug != 'pilot-platform'
+              AND r.name = 'contractor_owner'
             """,
             (email,),
         ).fetchall()
+        if len(rows) != 1:
+            conn.close()
+            return None, None
+        org_id = int(rows[0]["organization_id"])
+        owner = conn.execute(
+            "SELECT * FROM users WHERE normalized_email=? AND organization_id=? AND is_active=1",
+            (email, org_id),
+        ).fetchone()
+        if owner is None or not email_is_verified(owner):
+            conn.close()
+            return None, None
     except Exception:
         conn.close()
         return None, None
-    if len(rows) != 1:
-        conn.close()
-        return None, None
-    return int(rows[0]["organization_id"]), conn
+    return org_id, conn
 
 
 def _routing_class(pconn, principal: Principal) -> str:
@@ -151,8 +179,7 @@ def _routing_class(pconn, principal: Principal) -> str:
     """
     from pipeline.billing.entitlements import PRIORITY, STANDARD, request_priority
 
-    del pconn  # pilot-platform is not a Contractor Pro organization
-    org_id, billing = _billing_organization_id(principal)
+    org_id, billing = _billing_organization_id(pconn, principal)
     if org_id is None or billing is None:
         return STANDARD
     try:
@@ -328,6 +355,7 @@ def create_request(pconn, platform, principal, body: dict) -> dict:
     request_id = "r-" + secrets.token_hex(8)
     now = _now()
     # Body keys such as priority, plan, entitlement, account_type and organization are not read.
+    # Draft priority is a live preview only; send re-evaluates and freezes the share.
     priority = _routing_class(pconn, principal)
     with store.transaction() as conn:
         conn.execute("INSERT INTO material_requests (request_id, tenant_id, created_by, title, reference, status, "
@@ -350,8 +378,9 @@ def update_request(pconn, platform, principal, request_id, body: dict) -> dict:
         row = _req_row(conn, request_id)
         if row["status"] != "DRAFT":
             raise PilotError("already_sent", status=409)
-        conn.execute("UPDATE material_requests SET title=?, reference=?, updated_at=? WHERE request_id=?",
-                     (title, reference, _now(), request_id))
+        preview = _routing_class(pconn, principal)
+        conn.execute("UPDATE material_requests SET title=?, reference=?, priority=?, updated_at=? WHERE request_id=?",
+                     (title, reference, preview, _now(), request_id))
         _write_lines(conn, store.tenant_id, request_id, lines)
     return get_request(pconn, platform, principal, request_id)
 
@@ -375,7 +404,7 @@ def send_request(pconn, platform, principal, request_id, body: dict) -> dict:
     share_id = "s-" + secrets.token_hex(8)
     now = _now()
     try:
-        priority = row["priority"] if "priority" in row.keys() else "standard"
+        priority = _routing_class(pconn, principal)
         pconn.execute(
             "INSERT INTO request_shares (share_id, request_id, contractor_tenant_id, supplier_tenant_id, connection_id, "
             "sender_user_id, sent_at, status, contractor_name, title, reference, priority) "
@@ -396,8 +425,8 @@ def send_request(pconn, platform, principal, request_id, body: dict) -> dict:
         raise
     try:
         with store.transaction() as conn:
-            conn.execute("UPDATE material_requests SET status='SENT', updated_at=? WHERE request_id=?",
-                         (now, request_id))
+            conn.execute("UPDATE material_requests SET status='SENT', priority=?, updated_at=? WHERE request_id=?",
+                         (priority, now, request_id))
     except Exception:
         # Keep both sides consistent: withdraw the share if the contractor
         # record could not be marked as sent.

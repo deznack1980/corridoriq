@@ -38,7 +38,7 @@
       <dt>${P.th("f_business")}</dt><dd>${P.esc(c.business_name)}</dd>
       <dt>${P.th("f_email")}</dt><dd>${P.esc(me.user.email)}</dd>
       <dt>${P.th("f_phone")}</dt><dd>${P.esc(c.phone || "—")}</dd>
-      <dt>${P.th("email_verification")}</dt><dd>${P.th("email_verification_pending")}</dd>`;
+      <dt>${P.th("email_verification")}</dt><dd>${c.email_verification === "verified" ? P.th("email_verification_verified") : `${P.th("email_verification_pending")} · <button type="button" class="link-btn" id="requestVerify">${P.th("request_verification")}</button>`}</dd>`;
     document.getElementById("editProfile").hidden = !c.is_owner;
     document.getElementById("pfBusiness").value = c.business_name;
     document.getElementById("pfPhone").value = c.phone || "";
@@ -56,6 +56,16 @@
     render();
     P.onLang = render;
     document.getElementById("signOut").addEventListener("click", P.signOut);
+    document.getElementById("account").addEventListener("click", async (e) => {
+      if (e.target.id !== "requestVerify") return;
+      e.target.disabled = true;
+      try {
+        await P.api("POST", "/api/pilot/auth/request-verification", {});
+        e.target.textContent = P.t("check_email");
+      } catch (err) {
+        e.target.disabled = false;
+      }
+    });
     document.getElementById("profileForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const msg = document.getElementById("profileMsg");

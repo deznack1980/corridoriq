@@ -9,23 +9,21 @@ Provisioning is a CorridorIQ-operator action: only an `admin.system` user of
 CorridorIQ's own organization may create contractor accounts. The browser can
 never choose the account type, role, plan or permissions; they are fixed here.
 
-The owner gets the same credential flow as any admin-created CorridorIQ user:
-a random temporary password, stored only as a hash, returned once to the
-creating operator (never logged, never emailed), and `must_change_password`
-forces a new password at first sign-in. There is no email verification or
-self-service signup in this branch; `validate_contractor_signup()` is the data
-contract a future public signup must reuse (see docs/operations/stripe_billing.md).
+The owner is invited by a purpose-bound email token (development sink only).
+No temporary password is generated or returned. Invitation acceptance sets
+the password and marks the invited email verified. `validate_contractor_signup()`
+is the data contract for the fields an operator supplies.
 """
 
 from __future__ import annotations
 
 import re
+import secrets
 import sqlite3
 
-from pipeline.auth.passwords import generate_temp_password
 from pipeline.auth.rbac import AuthzError, has_permission
 from pipeline.auth.seed import DEFAULT_ORG_SLUG
-from pipeline.auth.service import create_user, normalize_email, write_audit
+from pipeline.auth.service import AuthError, create_user, normalize_email, write_audit
 from pipeline.billing import store
 from pipeline.billing.entitlements import entitlements_for, request_priority
 from pipeline.billing.plans import CONTRACTOR
@@ -143,28 +141,85 @@ def create_contractor_account(conn: sqlite3.Connection, operator: dict, data, *,
                   operator["id"], now, now))
     conn.commit()
     first, _, last = fields["contact_name"].partition(" ")
-    temp_password = generate_temp_password()
+    placeholder = secrets.token_urlsafe(32)
     try:
-        owner_id = create_user(conn, organization_id=org_id, email=fields["email"], password=temp_password,
+        owner_id = create_user(conn, organization_id=org_id, email=fields["email"], password=placeholder,
                                first_name=first, last_name=last, display_name=fields["contact_name"],
                                phone=fields["phone"], role_names=[CONTRACTOR_ROLE], must_change_password=True,
                                created_by=operator["id"])
+        _issue_owner_invitation(conn, owner_id, fields["email"], fields["company_name"],
+                                org_id, operator_id=operator["id"], ip=ip, ua=ua)
     except Exception:
         conn.execute("DELETE FROM contractor_profiles WHERE organization_id=?", (org_id,))
+        conn.execute("DELETE FROM users WHERE organization_id=?", (org_id,))
         conn.execute("DELETE FROM organizations WHERE id=?", (org_id,))
         conn.commit()
         raise
     write_audit(conn, event_type="contractor_account_created", success=True, user_id=operator["id"],
                 organization_id=org_id, resource_type="organization", resource_id=org_id,
                 action="create_contractor_account", ip_address=ip, user_agent=ua,
-                details={"owner_user_id": owner_id, "roc_provided": bool(fields["roc_license"])})
+                details={"owner_user_id": owner_id, "roc_provided": bool(fields["roc_license"]),
+                         "invitation": True})
     return {
         "organization": {"id": org_id, "name": fields["company_name"], "account_type": CONTRACTOR},
         "owner": {"id": owner_id, "email": fields["email"], "display_name": fields["contact_name"],
-                  "role": CONTRACTOR_ROLE, "must_change_password": True},
-        # Shown once to the creating operator; only its hash is stored.
-        "temporary_password": temp_password,
+                  "role": CONTRACTOR_ROLE, "must_change_password": True, "invitation_pending": True},
+        "invitation_sent": True,
     }
+
+
+def _issue_owner_invitation(conn, owner_id, email, company_name, org_id, *, operator_id=None, ip=None, ua=None):
+    from pipeline.auth import mail, tokens
+
+    raw, expires = tokens.issue(conn, purpose=tokens.PORTAL_INVITE, ttl=tokens.INVITE_TTL,
+                                user_id=owner_id, email=email, context={"organization_id": org_id}, ip=ip)
+    conn.commit()
+    mail.send(mail.portal_owner_invitation(email, mail.token_link("login.html", "accept-invite", raw),
+                                           expires, company_name))
+    write_audit(conn, event_type="contractor_owner_invitation_issued", success=True,
+                user_id=operator_id, organization_id=org_id, resource_type="user",
+                resource_id=owner_id, ip_address=ip, user_agent=ua, details={"email": email})
+
+
+def accept_owner_invitation(conn: sqlite3.Connection, raw_token, new_password, *, ip=None, ua=None) -> dict:
+    """Claim a contractor-owner invitation. Does not open a session."""
+    from pipeline.auth import passwords, tokens
+    from pipeline.auth.service import mark_email_verified
+
+    if len(new_password or "") < 8 or len(new_password or "") > 200:
+        raise AuthError("New password must be at least 8 characters.", status=400)
+    try:
+        with tokens.transaction(conn):
+            preview = tokens.inspect(conn, raw_token, purpose=tokens.PORTAL_INVITE)
+            if preview is None:
+                raise tokens.TokenError()
+            user = conn.execute("SELECT * FROM users WHERE id=?", (preview["user_id"],)).fetchone()
+            if user is None or not user["is_active"]:
+                raise tokens.TokenError()
+            ctx = tokens.context_of(preview)
+            if ctx.get("organization_id") not in (None, user["organization_id"]):
+                raise tokens.TokenError()
+            org = conn.execute("SELECT * FROM organizations WHERE id=?", (user["organization_id"],)).fetchone()
+            if org is None or not org["is_active"] or org["account_type"] != CONTRACTOR:
+                raise tokens.TokenError()
+            tokens.consume(conn, raw_token, purpose=tokens.PORTAL_INVITE,
+                           user_id=user["id"], email=user["normalized_email"])
+            conn.execute(
+                "UPDATE users SET password_hash=?, must_change_password=0, failed_login_count=0, "
+                "locked_until=NULL, updated_at=? WHERE id=?",
+                (passwords.hash_password(new_password), store.now_iso(), user["id"]),
+            )
+            mark_email_verified(conn, user["id"], user["normalized_email"])
+            tokens.revoke(conn, purpose=tokens.PORTAL_INVITE, user_id=user["id"], email=user["normalized_email"])
+            write_audit(conn, event_type="contractor_owner_invitation_accepted", success=True,
+                        user_id=user["id"], organization_id=user["organization_id"],
+                        ip_address=ip, user_agent=ua, details={"email": user["normalized_email"]},
+                        commit=False)
+    except tokens.TokenError as exc:
+        write_audit(conn, event_type="contractor_owner_invitation_accepted", success=False,
+                    ip_address=ip, user_agent=ua, details={"reason": "invalid_token"})
+        raise AuthError("invalid or expired token", status=400) from exc
+    return {"ok": True}
 
 
 def list_contractor_accounts(conn: sqlite3.Connection, operator: dict, config=None) -> list[dict]:

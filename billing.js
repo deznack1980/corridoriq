@@ -89,7 +89,7 @@
           <dl style="display:grid;grid-template-columns:auto 1fr;gap:8px 18px;margin:0">${rows.map(([k, v]) => `<dt class="muted">${e(k)}</dt><dd style="margin:0;font-weight:600">${v}</dd>`).join("")}</dl>
           ${actions ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:16px">${actions}</div>` : ""}
           ${note ? `<p class="muted" style="margin-top:12px">${e(note)}</p>` : ""}
-          ${s.plan.audience === "contractor" ? `<p class="muted" style="margin-top:12px">Priority Requests are routed ahead of standard requests. Suppliers still respond on their own schedule.</p>` : ""}
+          ${s.plan.audience === "contractor" ? `<p class="muted" style="margin-top:12px">Priority requests are listed first and marked Priority in your supplier's CorridorIQ inbox. Suppliers still respond on their own schedule.</p>` : ""}
           <p class="muted" style="margin-top:12px">Payments are processed by Stripe. CorridorIQ never sees or stores card details.</p>
         </div>
       </div>`;

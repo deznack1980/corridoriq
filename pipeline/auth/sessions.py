@@ -21,7 +21,8 @@ def _iso(dt: datetime) -> str:
 
 def create_session(conn: sqlite3.Connection, user_id: int, *,
                    ip_address: str | None = None,
-                   user_agent: str | None = None) -> str:
+                   user_agent: str | None = None,
+                   commit: bool = True) -> str:
     token = secrets.token_urlsafe(32)
     now = _now()
     expires = now + timedelta(hours=settings.SESSION_TTL_HOURS)
@@ -30,7 +31,8 @@ def create_session(conn: sqlite3.Connection, user_id: int, *,
         "ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)",
         (token, user_id, _iso(now), _iso(expires), ip_address, user_agent),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return token
 
 
@@ -52,19 +54,21 @@ def get_session(conn: sqlite3.Connection, token: str | None):
     return row
 
 
-def revoke_session(conn: sqlite3.Connection, token: str) -> None:
+def revoke_session(conn: sqlite3.Connection, token: str, *, commit: bool = True) -> None:
     conn.execute(
         "UPDATE sessions SET revoked_at=? WHERE token=? AND revoked_at IS NULL",
         (_iso(_now()), token),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
-def revoke_user_sessions(conn: sqlite3.Connection, user_id: int) -> int:
+def revoke_user_sessions(conn: sqlite3.Connection, user_id: int, *, commit: bool = True) -> int:
     """Revoke every active session for a user (used on password change/disable)."""
     cur = conn.execute(
         "UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
         (_iso(_now()), user_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return cur.rowcount

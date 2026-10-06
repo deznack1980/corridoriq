@@ -452,6 +452,8 @@ def http_server(tmp_path, monkeypatch):
     org = _org(c)
     auth.create_user(c, organization_id=org, email="httpadmin@corridoriq.com",
                      password="HttpAdmin123", role_names=["admin"], must_change_password=False)
+    auth.create_user(c, organization_id=org, email="httpmcp@corridoriq.com",
+                     password="HttpMcp123", role_names=["admin"], must_change_password=True)
     rep_id = auth.create_user(c, organization_id=org, email="httprep@corridoriq.com",
                               password="HttpRep123", role_names=["sales_representative"],
                               must_change_password=False)
@@ -514,3 +516,28 @@ def test_http_login_sets_httponly_cookie(http_server):
                             {"email": "httpadmin@corridoriq.com", "password": "HttpAdmin123"})
     assert "HttpOnly" in set_cookie
     assert "SameSite=Lax" in set_cookie
+
+
+def test_http_must_change_password_blocks_protected_routes(http_server):
+    port = http_server["port"]
+    status, data, set_cookie = _req(port, "POST", "/api/auth/login",
+                                    {"email": "httpmcp@corridoriq.com", "password": "HttpMcp123"})
+    assert status == 200 and data["user"]["must_change_password"] is True
+    cookie = set_cookie.split(";")[0]
+    assert _req(port, "GET", "/api/auth/me", cookie=cookie)[0] == 200
+    status, body, _ = _req(port, "GET", "/api/sales/dashboard", cookie=cookie)
+    assert status == 403 and body["error"] == "password_change_required"
+    status, body, _ = _req(port, "GET", "/api/admin/users", cookie=cookie)
+    assert status == 403 and body["error"] == "password_change_required"
+    assert _req(port, "POST", "/api/auth/logout", {}, cookie=cookie)[0] == 200
+    status, data, set_cookie = _req(port, "POST", "/api/auth/login",
+                                    {"email": "httpmcp@corridoriq.com", "password": "HttpMcp123"})
+    cookie = set_cookie.split(";")[0]
+    assert _req(port, "POST", "/api/auth/change-password",
+                {"old_password": "HttpMcp123", "new_password": "HttpMcp4567"}, cookie=cookie)[0] == 200
+    assert _req(port, "GET", "/api/auth/me", cookie=cookie)[0] == 401
+    status, data, set_cookie = _req(port, "POST", "/api/auth/login",
+                                    {"email": "httpmcp@corridoriq.com", "password": "HttpMcp4567"})
+    assert status == 200 and data["user"]["must_change_password"] is False
+    cookie = set_cookie.split(";")[0]
+    assert _req(port, "GET", "/api/sales/dashboard", cookie=cookie)[0] == 200

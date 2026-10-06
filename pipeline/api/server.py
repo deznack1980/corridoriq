@@ -24,12 +24,16 @@ from pipeline.billing.config import billing_enabled, load_config as load_billing
 from pipeline.billing.gateway import default_gateway as default_billing_gateway
 from pipeline.billing.webhook import MAX_PAYLOAD_BYTES as BILLING_MAX_WEBHOOK_BYTES
 from pipeline.billing.webhook import handle_webhook as handle_billing_webhook
+from pipeline.auth import throttle
+from pipeline.auth import tokens as auth_tokens
 from pipeline.auth.service import (
     AuthError,
     change_password,
+    complete_password_reset,
     get_current_user,
     login,
     logout,
+    request_password_reset,
     serialize_user_context,
     write_audit,
 )
@@ -423,6 +427,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             user = self._require_user(conn)
             if user is None:
                 return
+            if user.get("must_change_password"):
+                return self._json(403, {"error": "password_change_required"})
             self._cur_user = user
             ip, ua = self._client()
             config = load_billing_config()
@@ -455,6 +461,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         user = self._require_user(conn)
         if user is None:
             return
+        if user.get("must_change_password"):
+            return self._json(403, {"error": "password_change_required"})
         self._cur_user = user
         ip, ua = self._client()
 
@@ -555,15 +563,38 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _route_write(self, conn, method, path, body):
         ip, ua = self._client()
 
-        # --- auth (login is the only unauthenticated write) ---
+        # --- auth (login / recovery / invitation are unauthenticated writes) ---
         if method == "POST" and path == "/api/auth/login":
+            if throttle.portal.hit("login_ip", str(ip or "unknown")):
+                return self._json(429, {"error": "too_many_requests"})
             token, user = login(conn, body.get("email", ""), body.get("password", ""),
                                 ip_address=ip, user_agent=ua)
             return self._json(200, {"user": serialize_user_context(user)}, set_cookie=token)
+        if method == "POST" and path == "/api/auth/forgot":
+            email = (body.get("email") or "").strip().lower()
+            if throttle.portal.hit("forgot_ip", str(ip or "unknown")):
+                return self._json(429, {"error": "too_many_requests"})
+            if email and throttle.portal.hit("forgot_email", email):
+                return self._json(202, {"status": "check_email"})
+            return self._json(202, request_password_reset(conn, body.get("email"), ip=ip, ua=ua,
+                                                          purpose=auth_tokens.PORTAL_RESET))
+        if method == "POST" and path == "/api/auth/reset":
+            if throttle.portal.hit("reset_ip", str(ip or "unknown")):
+                return self._json(429, {"error": "too_many_requests"})
+            complete_password_reset(conn, body.get("token"), body.get("password"),
+                                    purpose=auth_tokens.PORTAL_RESET, ip=ip, ua=ua)
+            return self._json(200, {"ok": True})
+        if method == "POST" and path == "/api/auth/accept-invite":
+            if throttle.portal.hit("invite_accept_ip", str(ip or "unknown")):
+                return self._json(429, {"error": "too_many_requests"})
+            return self._json(200, contractor_accounts.accept_owner_invitation(
+                conn, body.get("token"), body.get("password"), ip=ip, ua=ua))
 
         user = self._require_user(conn)
         if user is None:
             return
+        if user.get("must_change_password") and path not in ("/api/auth/change-password", "/api/auth/logout"):
+            return self._json(403, {"error": "password_change_required"})
         self._cur_user = user
 
         if method == "POST" and path == "/api/auth/logout":

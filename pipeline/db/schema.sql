@@ -663,7 +663,11 @@ CREATE TABLE IF NOT EXISTS users (
     locked_until        TEXT,
     last_login_at       TEXT,
     created_at          TEXT NOT NULL,
-    updated_at          TEXT NOT NULL
+    updated_at          TEXT NOT NULL,
+    -- Email ownership proof. Verification counts only while
+    -- email_verified_address equals the current normalized_email.
+    email_verified_at   TEXT,
+    email_verified_address TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id);
 
@@ -821,6 +825,26 @@ CREATE TABLE IF NOT EXISTS security_audit_log (
 CREATE INDEX IF NOT EXISTS idx_sec_audit_user ON security_audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_sec_audit_time ON security_audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sec_audit_event ON security_audit_log(event_type);
+
+-- auth_tokens: purpose-bound, expiring, single-use links (signup, email
+-- verification, invitations, password reset). Only the SHA-256 of the raw
+-- token is stored; the raw value exists once, inside the delivered link.
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash          TEXT NOT NULL UNIQUE,
+    purpose             TEXT NOT NULL,
+    user_id             INTEGER REFERENCES users(id),
+    email               TEXT,
+    password_marker     TEXT,
+    context_json        TEXT,
+    created_at          TEXT NOT NULL,
+    expires_at          TEXT NOT NULL,
+    consumed_at         TEXT,
+    revoked_at          TEXT,
+    created_ip          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id, purpose);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_email ON auth_tokens(email, purpose);
 
 -- ============================================================
 -- Sprint 6 — Multi-Supplier Product Pricing (V1)

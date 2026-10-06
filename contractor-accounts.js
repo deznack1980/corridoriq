@@ -1,6 +1,6 @@
 /* Contractor accounts — CorridorIQ operators only (server enforces admin.system +
- * CorridorIQ's own organization). Creates a contractor organization and its owner
- * with a one-time temporary password (stored only as a hash; shown once here). */
+ * CorridorIQ's own organization). Creates a contractor organization and issues
+ * an owner invitation so they choose their own password. No temporary password. */
 (function () {
   let items = [];
 
@@ -50,9 +50,7 @@
           const res = await CIQ.api.post("/api/admin/contractor-accounts", payload);
           m.close(); await load();
           CIQ.modal({ title: "Contractor account created", width: 440,
-            body: `<p>Give this temporary password to ${CIQ.esc(res.owner.email)} through a secure channel.
-              It will not be shown again, and they must choose a new password at first sign-in.</p>
-              <div class="card card-pad" style="text-align:center;font-size:20px;font-weight:700;letter-spacing:1px">${CIQ.esc(res.temporary_password)}</div>`,
+            body: `<p>An invitation was sent to ${CIQ.esc(res.owner.email)} so they can confirm the address and choose their own password. No temporary password was created.</p>`,
             footer: `<button class="btn btn-primary" onclick="this.closest('.modal-backdrop').remove()">Done</button>` });
         } catch (err) {
           const fields = err.data && err.data.fields;

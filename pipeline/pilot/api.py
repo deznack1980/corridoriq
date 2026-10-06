@@ -14,7 +14,11 @@ import time
 from collections import deque
 from urllib.parse import unquote
 
-from pipeline.auth.service import AuthError, logout
+from pipeline.auth import throttle
+from pipeline.auth.service import (
+    AuthError, logout, request_password_reset, complete_password_reset, normalize_email,
+)
+from pipeline.auth import tokens as auth_tokens
 from pipeline.pilot import accounts, analytics, materials
 from pipeline.pilot.accounts import PilotError
 from pipeline.pilot.platform import PILOT_COOKIE, Platform, PilotNotConfigured, configured_root
@@ -24,11 +28,14 @@ _REQ = re.compile(r"^/api/pilot/contractor/requests/(r-[0-9a-f]{16})(/send)?$")
 _SHARE = re.compile(r"^/api/pilot/supplier/requests/(s-[0-9a-f]{16})(/acknowledge)?$")
 _REFERRAL = re.compile(r"^/api/pilot/referral/([^/]{1,64})$")
 
-_PUBLIC_WRITES = {"/api/pilot/auth/signup", "/api/pilot/auth/login", "/api/pilot/events"}
+_PUBLIC_WRITES = {
+    "/api/pilot/auth/signup", "/api/pilot/auth/complete-signup", "/api/pilot/auth/inspect",
+    "/api/pilot/auth/login", "/api/pilot/auth/forgot", "/api/pilot/auth/reset", "/api/pilot/events",
+}
 
-# Simple in-memory throttle for unauthenticated writes (per client address).
+# Events keep the original coarse per-IP limiter. Identity flows use throttle.pilot.
 _WINDOW_S = 600
-_LIMITS = {"/api/pilot/auth/signup": 10, "/api/pilot/auth/login": 30, "/api/pilot/events": 300}
+_LIMITS = {"/api/pilot/events": 300}
 _hits: dict = {}
 _hits_lock = threading.Lock()
 
@@ -100,17 +107,48 @@ def _route(h, platform: Platform, conn, method, path, query, body):
                 raise PilotError("referral_not_found", status=404)
             return h._json(200, accounts.public_referral(info))
     if method == "POST" and path in _PUBLIC_WRITES:
-        if _throttled(path, ip):
-            raise PilotError("too_many_requests", status=429)
         if path == "/api/pilot/events":
+            if _throttled(path, ip):
+                raise PilotError("too_many_requests", status=429)
             return _client_event(h, platform, conn, token, body)
         if path == "/api/pilot/auth/signup":
-            new_token, principal = accounts.signup_contractor(conn, platform, body, ip=ip, ua=ua)
+            email = (body.get("email") or "").strip().lower()
+            if throttle.pilot.hit("signup_ip", str(ip or "unknown")):
+                raise PilotError("too_many_requests", status=429)
+            if email and throttle.pilot.hit("signup_email", email):
+                return h._json(202, {"status": "check_email"})
+            return h._json(202, accounts.request_contractor_signup(conn, platform, body, ip=ip, ua=ua))
+        if path == "/api/pilot/auth/complete-signup":
+            if throttle.pilot.hit("signup_ip", str(ip or "unknown")):
+                raise PilotError("too_many_requests", status=429)
+            new_token, principal = accounts.complete_contractor_signup(conn, platform, body, ip=ip, ua=ua)
             return h._json(201, accounts.me(conn, platform, principal), raw_cookie=_cookie(h, new_token))
+        if path == "/api/pilot/auth/inspect":
+            purpose = body.get("purpose") or auth_tokens.PILOT_SIGNUP
+            return h._json(200, accounts.inspect_auth_token(conn, body.get("token"), purpose=purpose))
         if path == "/api/pilot/auth/login":
+            if throttle.pilot.hit("login_ip", str(ip or "unknown")):
+                raise PilotError("too_many_requests", status=429)
             new_token, principal = accounts.sign_in(conn, platform, body.get("email"), body.get("password"),
                                                     visit_id=body.get("visit_id"), ip=ip, ua=ua)
             return h._json(200, accounts.me(conn, platform, principal), raw_cookie=_cookie(h, new_token))
+        if path == "/api/pilot/auth/forgot":
+            email = (body.get("email") or "").strip().lower()
+            if throttle.pilot.hit("forgot_ip", str(ip or "unknown")):
+                raise PilotError("too_many_requests", status=429)
+            if email and throttle.pilot.hit("forgot_email", email):
+                return h._json(202, {"status": "check_email"})
+            return h._json(202, request_password_reset(conn, body.get("email"), ip=ip, ua=ua,
+                                                       purpose=auth_tokens.PILOT_RESET))
+        if path == "/api/pilot/auth/reset":
+            if throttle.pilot.hit("reset_ip", str(ip or "unknown")):
+                raise PilotError("too_many_requests", status=429)
+            try:
+                complete_password_reset(conn, body.get("token"), body.get("password"),
+                                        purpose=auth_tokens.PILOT_RESET, ip=ip, ua=ua)
+            except AuthError as exc:
+                raise PilotError("invalid_token" if exc.status == 400 else "invalid_login", status=exc.status)
+            return h._json(200, {"ok": True})
 
     # ---- authenticated ------------------------------------------------------
     principal = accounts.principal_for_token(conn, platform, token)
@@ -130,6 +168,15 @@ def _route(h, platform: Platform, conn, method, path, query, body):
         return h._json(200, accounts.me(conn, platform, principal))
     if method == "PATCH" and path == "/api/pilot/me/language":
         return h._json(200, {"language": accounts.set_language(conn, principal, body.get("language"))})
+    if method == "POST" and path == "/api/pilot/auth/request-verification":
+        if throttle.pilot.hit("verify_ip", str(ip or "unknown")):
+            raise PilotError("too_many_requests", status=429)
+        email = normalize_email((principal.user or {}).get("email") or "")
+        if email and throttle.pilot.hit("verify_email", email):
+            return h._json(202, {"status": "check_email"})
+        return h._json(202, accounts.request_legacy_verification(conn, principal, ip=ip, ua=ua))
+    if method == "POST" and path == "/api/pilot/auth/verify-email":
+        return h._json(200, accounts.complete_legacy_verification(conn, principal, body.get("token"), ip=ip, ua=ua))
 
     # contractor
     if method == "PATCH" and path == "/api/pilot/contractor/profile":

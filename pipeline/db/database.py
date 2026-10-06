@@ -172,6 +172,9 @@ _KNOWLEDGE_V21_COLUMNS = [
     # Billing: supplier vs contractor organizations (existing rows are suppliers).
     ("organizations", "account_type", "TEXT NOT NULL DEFAULT 'supplier'"),
     ("billing_accounts", "version", "INTEGER NOT NULL DEFAULT 0"),
+    # Verified email ownership (existing users stay unverified).
+    ("users", "email_verified_at", "TEXT"),
+    ("users", "email_verified_address", "TEXT"),
 ]
 
 

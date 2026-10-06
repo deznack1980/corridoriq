@@ -86,6 +86,10 @@ def env(tmp_path, monkeypatch):
         return conn
 
     monkeypatch.setattr(server_mod, "_factory", factory)
+    from pipeline.auth import mail, throttle
+    mail.sink().clear()
+    throttle.pilot.clear()
+    throttle.portal.clear()
     pilot_api._hits.clear()
     platform = Platform(root)
     conn = platform.connect()
@@ -113,15 +117,29 @@ def client(env) -> Client:
     return Client(env["port"])
 
 
+def _sink_token(email, kind):
+    from pipeline.auth import mail
+    msgs = mail.sink().outbox(to=email, kind=kind)
+    assert msgs, (email, kind)
+    link = msgs[-1].link or ""
+    assert "#t=" in link and "token=" not in (msgs[-1].link or "").split("#", 1)[0]
+    return link.split("#t=", 1)[1]
+
+
 def signup(env, email, business, *, code=None, utm=None, language="en", visit="v-test-visit-1"):
+    from pipeline.auth import mail
     c = client(env)
-    body = {"name": "Synthetic Person", "business_name": business, "email": email, "password": PW,
+    body = {"name": "Synthetic Person", "business_name": business, "email": email,
             "language": language, "visit_id": visit}
     if code:
         body["referral_code"] = code
     if utm:
         body["utm"] = utm
-    status, me = c.call("POST", "/api/pilot/auth/signup", body)
+    status, resp = c.call("POST", "/api/pilot/auth/signup", body)
+    assert status == 202 and resp == {"status": "check_email"}, resp
+    assert c.cookie is None
+    raw = _sink_token(email.lower(), mail.PILOT_SIGNUP)
+    status, me = c.call("POST", "/api/pilot/auth/complete-signup", {"token": raw, "password": PW})
     assert status == 201, me
     return c, me
 
@@ -302,7 +320,7 @@ def _billing(env):
 
 
 def _contractor_billing(env, email, *, state="active", price=PRICE_C, account_type="contractor",
-                        with_account=True):
+                        with_account=True, verified=True, owner=True):
     """Local billing row for the same email. Not a Stripe call and not a second pilot user."""
     conn = _billing(env)
     now = "2026-10-05T12:00:00+00:00"
@@ -312,11 +330,25 @@ def _contractor_billing(env, email, *, state="active", price=PRICE_C, account_ty
         "VALUES (?, ?, 1, ?, ?, ?)",
         (email, slug, account_type, now, now),
     ).lastrowid
-    conn.execute(
+    verified_at = now if verified else None
+    verified_addr = email.lower() if verified else None
+    uid = conn.execute(
         "INSERT INTO users (organization_id, email, normalized_email, password_hash, is_active, "
-        "created_at, updated_at) VALUES (?, ?, ?, 'not-a-login', 1, ?, ?)",
-        (org, email, email.lower(), now, now),
-    )
+        "created_at, updated_at, email_verified_at, email_verified_address) "
+        "VALUES (?, ?, ?, 'not-a-login', 1, ?, ?, ?, ?)",
+        (org, email, email.lower(), now, now, verified_at, verified_addr),
+    ).lastrowid
+    if owner and account_type == "contractor":
+        role = conn.execute("SELECT id FROM roles WHERE name='contractor_owner'").fetchone()
+        if role is None:
+            conn.execute(
+                "INSERT INTO roles (name, display_name, is_system_role, created_at, updated_at) "
+                "VALUES ('contractor_owner', 'Contractor owner', 1, ?, ?)", (now, now))
+            role_id = conn.execute("SELECT id FROM roles WHERE name='contractor_owner'").fetchone()["id"]
+        else:
+            role_id = role["id"]
+        conn.execute("INSERT INTO user_roles (user_id, role_id, assigned_at) VALUES (?, ?, ?)",
+                     (uid, role_id, now))
     if with_account:
         conn.execute(
             """
@@ -363,18 +395,18 @@ def test_past_due_contractor_pro_new_request_is_standard(env, monkeypatch):
     _use_test_billing(monkeypatch)
     email = "lapse@example.test"
     org = _contractor_billing(env, email)
-    c, _ = signup(env, email, "Lapse Mechanical", code=env["code_a"])
-    assert _request(c, title="While paid")[1]["priority"] == "priority"
+    c, me = signup(env, email, "Lapse Mechanical", code=env["code_a"])
+    first = _request(c, title="While paid")[1]
+    assert first["priority"] == "priority"
     conn = _billing(env)
-    conn.execute("UPDATE billing_accounts SET billing_state='past_due', subscription_status='past_due' "
+    conn.execute("UPDATE billing_accounts SET billing_state='canceled', subscription_status='canceled' "
                  "WHERE organization_id=?", (org,))
     conn.commit()
     conn.close()
     second = _request(c, title="After lapse", priority="priority", organization_id=org)[1]
     assert second["priority"] == "standard"
-    stored = {item["title"]: item["priority"] for item in c.call("GET", "/api/pilot/contractor/requests")[1]["items"]}
-    assert stored["While paid"] == "priority"
-    assert stored["After lapse"] == "standard"
+    status, sent = send(c, first, me["connections"][0]["connection_id"])
+    assert status == 200 and sent["priority"] == "standard"
 
 
 @pytest.mark.parametrize("state", ["incomplete", "unpaid", "paused", "canceled", "checkout_pending"])
@@ -721,16 +753,23 @@ def test_writes_require_json(env):
 
 
 def test_signup_validation_and_duplicates(env):
+    from pipeline.auth import mail
     c = client(env)
-    base = {"name": "N", "business_name": "Biz", "email": "dup@example.test", "password": PW}
-    assert c.call("POST", "/api/pilot/auth/signup", dict(base, password="short"))[1]["error"] == "weak_password"
+    base = {"name": "N", "business_name": "Biz", "email": "dup@example.test"}
     assert c.call("POST", "/api/pilot/auth/signup", dict(base, email="nope"))[1]["error"] == "invalid_email"
     assert c.call("POST", "/api/pilot/auth/signup", dict(base, business_name=" "))[1]["error"] == "business_required"
-    assert c.call("POST", "/api/pilot/auth/signup", base)[0] == 201
-    assert client(env).call("POST", "/api/pilot/auth/signup", base)[1]["error"] == "email_exists"
-    # Signup without a referral works and has no supplier connection.
-    me = client(env).call("GET", "/api/pilot/me")
-    assert me[0] == 401
+    assert c.call("POST", "/api/pilot/auth/signup", dict(base, name=""))[1]["error"] == "name_required"
+    status, resp = c.call("POST", "/api/pilot/auth/signup", base)
+    assert status == 202 and resp == {"status": "check_email"}
+    assert c.cookie is None
+    assert client(env).call("POST", "/api/pilot/auth/signup", base) == (202, {"status": "check_email"})
+    assert client(env).call("GET", "/api/pilot/me")[0] == 401
+    raw = _sink_token("dup@example.test", mail.PILOT_SIGNUP)
+    assert c.call("POST", "/api/pilot/auth/complete-signup", {"token": raw, "password": "short"})[1]["error"] == "weak_password"
+    status, me = c.call("POST", "/api/pilot/auth/complete-signup", {"token": raw, "password": PW})
+    assert status == 201 and me["contractor"]["email_verification"] == "verified"
+    assert client(env).call("POST", "/api/pilot/auth/signup", base) == (202, {"status": "check_email"})
+    assert len(mail.sink().outbox(to="dup@example.test", kind=mail.PILOT_SIGNUP)) == 2
 
 
 def test_pilot_disabled_without_root(monkeypatch, tmp_path):
@@ -942,6 +981,8 @@ def test_trusted_proxy_uses_cloudflare_ip_and_a_direct_request_cannot_spoof(env,
     assert resolve_client_ip("127.0.0.1", forged) == "127.0.0.1"
     assert resolve_client_ip("198.51.100.8", trusted) == "198.51.100.8"
     assert resolve_client_ip("127.0.0.1", {"CF-Connecting-IP": "not an ip", "X-CorridorIQ-Proxy-Secret": secret}) == "127.0.0.1"
+    from pipeline.auth import throttle
+    throttle.pilot.clear()
     pilot_api._hits.clear()
     c = client(env)
     for _ in range(10):

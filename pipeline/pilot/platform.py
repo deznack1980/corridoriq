@@ -24,7 +24,12 @@ PLATFORM_FILENAME = "platform.db"
 PILOT_COOKIE = "corridoriq_pilot_session"
 
 AUTH_TABLES = ("organizations", "users", "sessions", "roles", "permissions",
-               "role_permissions", "user_roles", "security_audit_log")
+               "role_permissions", "user_roles", "security_audit_log", "auth_tokens")
+# Columns added to the portal auth tables after the first pilot databases existed.
+_AUTH_COLUMN_MIGRATIONS = (
+    ("users", "email_verified_at", "TEXT"),
+    ("users", "email_verified_address", "TEXT"),
+)
 
 # Pilot roles (platform database only).
 ROLE_CONTRACTOR_OWNER = "contractor_owner"
@@ -165,13 +170,19 @@ def _now() -> str:
 
 
 def auth_schema_sql() -> str:
-    """The portal's auth DDL, verbatim, for the tables in AUTH_TABLES."""
+    """The portal's auth DDL, verbatim, for the tables in AUTH_TABLES.
+
+    ``auth_tokens`` helper indexes live next to the table in schema.sql and
+    are copied with it so revoke-by-user/email stays indexed on the pilot store.
+    """
     text = Path(SCHEMA_PATH).read_text(encoding="utf-8")
     parts = []
     for table in AUTH_TABLES:
         m = re.search(rf"CREATE TABLE IF NOT EXISTS {table}\s*\(.*?\n\);", text, re.S)
         if not m:
             raise RuntimeError(f"auth table {table} not found in schema.sql")
+        parts.append(m.group(0))
+    for m in re.finditer(r"CREATE INDEX IF NOT EXISTS idx_auth_tokens_\w+ ON auth_tokens\([^)]+\);", text):
         parts.append(m.group(0))
     return "\n".join(parts)
 
@@ -215,6 +226,12 @@ class Platform:
         if tables & {"permits", "companies", "raw_record"}:
             conn.close()
             raise PilotNotConfigured("refusing to use an intelligence database as the pilot platform")
+        if "users" in tables:
+            user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+            for table, column, decl in _AUTH_COLUMN_MIGRATIONS:
+                if column not in user_cols:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            conn.commit()
         conn.executescript(auth_schema_sql())
         conn.executescript(_PILOT_SCHEMA)
         share_cols = {row[1] for row in conn.execute("PRAGMA table_info(request_shares)")}

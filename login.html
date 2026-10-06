@@ -89,7 +89,42 @@
               <input type="password" id="password" autocomplete="current-password" required /></div>
             <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Sign in</button>
           </form>
+          <p class="auth-note"><a href="?mode=forgot">Forgot password?</a></p>
           <div class="auth-msg" id="loginMsg"></div>
+        </div>
+
+        <div class="auth-card" id="forgotCard" style="display:none;">
+          <h1>Reset your password</h1>
+          <p class="sub">If an account exists for that address, we will send a reset link.</p>
+          <form id="forgotForm" action="javascript:void(0)" method="post" onsubmit="return false">
+            <div class="auth-field"><label for="forgotEmail">Work email</label>
+              <input type="email" id="forgotEmail" autocomplete="username" required /></div>
+            <button type="submit" class="btn btn-primary btn-block" id="forgotBtn">Email me a reset link</button>
+          </form>
+          <div class="auth-msg" id="forgotMsg"></div>
+          <p class="auth-note"><a href="/login.html">Back to sign in</a></p>
+        </div>
+
+        <div class="auth-card" id="resetCard" style="display:none;">
+          <h1>Choose a new password</h1>
+          <p class="sub">This link can be used once. You will need to sign in afterward.</p>
+          <form id="resetForm" action="javascript:void(0)" method="post" onsubmit="return false">
+            <div class="auth-field"><label for="resetPw">New password (min 8 characters)</label>
+              <input type="password" id="resetPw" autocomplete="new-password" required minlength="8" /></div>
+            <button type="submit" class="btn btn-primary btn-block" id="resetBtn">Save new password</button>
+          </form>
+          <div class="auth-msg" id="resetMsg"></div>
+        </div>
+
+        <div class="auth-card" id="inviteCard" style="display:none;">
+          <h1>Set up your account</h1>
+          <p class="sub">Confirm this invitation and choose your password. You will sign in after this step.</p>
+          <form id="inviteForm" action="javascript:void(0)" method="post" onsubmit="return false">
+            <div class="auth-field"><label for="invitePw">Password (min 8 characters)</label>
+              <input type="password" id="invitePw" autocomplete="new-password" required minlength="8" /></div>
+            <button type="submit" class="btn btn-primary btn-block" id="inviteBtn">Activate account</button>
+          </form>
+          <div class="auth-msg" id="inviteMsg"></div>
         </div>
 
         <div class="auth-card" id="changeCard" style="display:none;">
@@ -123,6 +158,21 @@
       const loginMsg = document.getElementById("loginMsg");
       const loginCard = document.getElementById("loginCard");
       const changeCard = document.getElementById("changeCard");
+      const forgotCard = document.getElementById("forgotCard");
+      const resetCard = document.getElementById("resetCard");
+      const inviteCard = document.getElementById("inviteCard");
+
+      function fragmentToken() {
+        const h = location.hash || "";
+        const m = h.match(/(?:^#|&)t=([^&]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
+      }
+
+      function showOnly(card) {
+        [loginCard, changeCard, forgotCard, resetCard, inviteCard].forEach((el) => {
+          el.style.display = el === card ? "block" : "none";
+        });
+      }
 
       const originBanner = document.getElementById("originBanner");
 
@@ -163,11 +213,13 @@
       }
 
       function showChange(prefillPw) {
-        loginCard.style.display = "none";
-        changeCard.style.display = "block";
+        showOnly(changeCard);
         if (prefillPw) document.getElementById("curPw").value = prefillPw;
       }
 
+      if (qs("mode") === "forgot") showOnly(forgotCard);
+      if (qs("mode") === "reset") showOnly(resetCard);
+      if (qs("mode") === "accept-invite") showOnly(inviteCard);
       if (qs("change") === "1") {
         fetch("/api/auth/me", { credentials: "same-origin" })
           .then((r) => { if (r.ok) showChange(); }).catch(() => {});
@@ -204,6 +256,54 @@
           loginMsg.textContent = "Could not reach the CorridorIQ server. Check your connection and try again.";
           loginMsg.className = "auth-msg error";
         } finally { btn.disabled = false; }
+      });
+
+      document.getElementById("forgotForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById("forgotMsg");
+        msg.textContent = ""; msg.className = "auth-msg";
+        const { ok, data } = await postJSON("/api/auth/forgot", { email: document.getElementById("forgotEmail").value });
+        if (!ok) {
+          msg.textContent = (data && data.error) || "Could not send a reset link.";
+          msg.className = "auth-msg error";
+          return;
+        }
+        msg.textContent = "If an account exists for that address, we sent a reset link.";
+        msg.className = "auth-msg ok";
+      });
+
+      document.getElementById("resetForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById("resetMsg");
+        msg.textContent = ""; msg.className = "auth-msg";
+        const { ok, data } = await postJSON("/api/auth/reset", {
+          token: fragmentToken(), password: document.getElementById("resetPw").value,
+        });
+        if (!ok) {
+          msg.textContent = (data && data.error) || "This link is invalid or has expired.";
+          msg.className = "auth-msg error";
+          return;
+        }
+        msg.textContent = "Password updated. Please sign in.";
+        msg.className = "auth-msg ok";
+        setTimeout(() => { window.location.href = "/login.html"; }, 1200);
+      });
+
+      document.getElementById("inviteForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById("inviteMsg");
+        msg.textContent = ""; msg.className = "auth-msg";
+        const { ok, data } = await postJSON("/api/auth/accept-invite", {
+          token: fragmentToken(), password: document.getElementById("invitePw").value,
+        });
+        if (!ok) {
+          msg.textContent = (data && data.error) || "This invitation is invalid or has expired.";
+          msg.className = "auth-msg error";
+          return;
+        }
+        msg.textContent = "Account ready. Please sign in.";
+        msg.className = "auth-msg ok";
+        setTimeout(() => { window.location.href = "/login.html"; }, 1200);
       });
 
       document.getElementById("changeForm").addEventListener("submit", async (e) => {

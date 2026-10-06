@@ -13,7 +13,6 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from pipeline.auth import service as auth
-from pipeline.auth.passwords import verify_password
 from pipeline.auth.rbac import AuthzError
 from pipeline.auth.seed import seed_auth
 from pipeline.billing import contractor_accounts as ca
@@ -43,6 +42,9 @@ def _factory(path):
 
 @pytest.fixture()
 def cw(tmp_path):
+    from pipeline.auth import mail, throttle
+    mail.sink().clear()
+    throttle.portal.clear()
     factory = _factory(tmp_path / "v02.db")
     c = factory()
     c.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -177,12 +179,19 @@ def test_operator_creates_contractor_account(cw):
                                      (user["id"],))]
     prof = c.execute("SELECT * FROM contractor_profiles WHERE organization_id=?", (org["id"],)).fetchone()
     audit = c.execute("SELECT details_json FROM security_audit_log WHERE event_type='contractor_account_created'").fetchone()
+    from pipeline.auth import mail, tokens
+    stored = c.execute("SELECT token_hash FROM auth_tokens WHERE purpose=?", (tokens.PORTAL_INVITE,)).fetchone()
     c.close()
     assert org["account_type"] == "contractor" and org["slug"].startswith("contractor-")
     assert roles == ["contractor_owner"] and user["must_change_password"] == 1
-    assert user["password_hash"] != res["temporary_password"] and verify_password(res["temporary_password"], user["password_hash"])
+    assert "temporary_password" not in res and res["invitation_sent"] is True
     assert prof["business_zip"] == "85004" and prof["roc_license"] is None
-    assert res["temporary_password"] not in (audit[0] or "")
+    assert "temporary_password" not in (audit[0] or "")
+    msgs = mail.sink().outbox(to="ana@cactusrooter.example", kind=mail.PORTAL_INVITE)
+    assert msgs and "#t=" in msgs[-1].link
+    raw = msgs[-1].link.split("#t=", 1)[1]
+    assert stored["token_hash"] == tokens.hash_token(raw) and raw not in stored["token_hash"]
+    assert raw not in (audit[0] or "")
     st = status(cw, "house_admin")  # operator's own org stays non-billable
     assert st["billable"] is False
 
@@ -437,7 +446,8 @@ def test_http_contractor_provisioning_authorization(site):
     assert s == 400 and "email" in json.loads(raw)["fields"]
     s, _, raw = _req(site["port"], "POST", "/api/admin/contractor-accounts", body, {**J, "Cookie": admin})
     res = json.loads(raw)
-    assert s == 201 and res["organization"]["account_type"] == "contractor" and res["temporary_password"]
+    assert s == 201 and res["organization"]["account_type"] == "contractor" and res["invitation_sent"]
+    assert "temporary_password" not in res
     s, _, raw = _req(site["port"], "GET", "/api/admin/contractor-accounts", None, {"Cookie": admin})
     assert s == 200 and any(a["organization_id"] == res["organization"]["id"] for a in json.loads(raw)["items"])
 
