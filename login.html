@@ -49,6 +49,10 @@
     .auth-msg.error { color: var(--red); } .auth-msg.ok { color: var(--signal); }
     .auth-note { text-align: center; margin-top: 18px; font-size: 12px; color: var(--text-3); }
     .auth-alt { display: flex; justify-content: space-between; margin-top: 18px; font-size: 12.5px; }
+    .auth-access { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); display: grid; gap: 9px; font-size: 12.5px; }
+    .auth-access strong { color: var(--text); font-size: 13px; }
+    .auth-access a { display: flex; justify-content: space-between; gap: 12px; text-decoration: none; }
+    .auth-access a span:last-child { color: var(--accent); font-weight: 650; white-space: nowrap; }
     @media (max-width: 900px) {
       .auth { grid-template-columns: 1fr; }
       .auth-side { padding: 24px 22px; }
@@ -65,7 +69,7 @@
         <div><div class="t">Corridor<b>IQ</b></div><div class="s">Construction Intelligence + Procurement</div></div>
       </a>
       <div class="auth-pitch">
-        <div class="k">Supplier workspace</div>
+        <div class="k">Supplier + admin workspace</div>
         <h2>Construction intelligence for the wet side.</h2>
         <p>Trade-checked accounts, permit context, and verified-contact discipline for plumbing and wet-side supply houses.</p>
         <ul class="auth-points">
@@ -81,7 +85,7 @@
       <div class="auth-wrap">
         <div class="auth-card" id="loginCard">
           <h1>Sign in</h1>
-          <p class="sub">Access is limited to authorized users. Activity is audited.</p>
+          <p class="sub">Existing supply-house, employee, and owner/admin accounts sign in here. Activity is audited.</p>
           <div class="error-banner" id="expiredBanner" style="display:none">Your session expired. Please sign in again.</div>
           <div class="error-banner" id="originBanner" style="display:none">This page could not reach the CorridorIQ server. Open the sign-in page from the CorridorIQ site address (not a saved file or another server).</div>
           <form id="loginForm" action="javascript:void(0)" method="post" onsubmit="return false">
@@ -93,6 +97,12 @@
           </form>
           <p class="auth-note"><a href="?mode=forgot">Forgot password?</a></p>
           <div class="auth-msg" id="loginMsg"></div>
+          <div class="auth-access">
+            <strong>Need an account?</strong>
+            <a href="/contractor-account.html?mode=signup"><span>Contractor</span><span>Create free account →</span></a>
+            <a href="/for-suppliers.html#walkthrough"><span>Supply house / distributor</span><span>Request access →</span></a>
+            <div class="auth-note" style="text-align:left;margin:2px 0 0">Owner/admin accounts use this same sign-in after they are provisioned.</div>
+          </div>
         </div>
 
         <div class="auth-card" id="forgotCard" style="display:none;">
@@ -143,7 +153,7 @@
           </form>
           <div class="auth-msg" id="changeMsg"></div>
         </div>
-        <div class="auth-alt"><a href="/">&larr; CorridorIQ.pro</a><a href="for-suppliers.html#walkthrough">Need access?</a></div>
+        <div class="auth-alt"><a href="/">&larr; CorridorIQ.pro</a><a href="/for-suppliers.html#walkthrough">Supplier access</a></div>
         <div class="auth-note">Protected by session security and role-based access control.</div>
       </div>
     </main>
