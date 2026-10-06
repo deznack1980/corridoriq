@@ -176,12 +176,11 @@
     return out;
   }
 
-  // Temporary vector mark (final logo artwork pending): a corridor of three
-  // ascending bars on the brand-blue tile.
+  // Canonical graphite + amber mark (matches assets/brand/corridoriq-mark-amber.svg).
   CIQ.BRAND_MARK = `<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-    <path d="M3 15.5 L9.2 4.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M10.4 15.5 L16.6 4.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".55"/>
-    <circle cx="16.6" cy="4.5" r="1.9" fill="#5fd3a0"/></svg>`;
+    <path d="M3 15.5 L9.2 4.5" stroke="#ece8df" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M10.4 15.5 L16.6 4.5" stroke="#ece8df" stroke-width="2.2" stroke-linecap="round" opacity=".55"/>
+    <circle cx="16.6" cy="4.5" r="1.9" fill="#e8952b"/></svg>`;
   CIQ.BRAND_DESCRIPTOR = "Construction Intelligence + Procurement";
 
   function portalLabel(portal) {
@@ -231,7 +230,7 @@
       <aside class="sidebar" id="ciqSidebar">
         <a class="sidebar-brand" href="${CIQ.esc(opts.portal === "contractor" ? "contractor-dashboard.html" : CIQ.landingPage())}">
           <div class="brand-mark">${CIQ.BRAND_MARK}</div>
-          <div class="brand-text"><div class="t">CorridorIQ</div><div class="s">${CIQ.esc(CIQ.BRAND_DESCRIPTOR)}</div></div>
+          <div class="brand-text"><div class="t">Corridor<b>IQ</b></div><div class="s">${CIQ.esc(CIQ.BRAND_DESCRIPTOR)}</div></div>
         </a>
         ${portalLabel(opts.portal)}
         <nav class="nav">${navHtml(opts.active, opts.portal)}</nav>
