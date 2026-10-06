@@ -84,7 +84,7 @@ def apply_email_change(conn: sqlite3.Connection, user_id: int, new_email, *,
         raise ValueError("A valid email is required.")
     existing = _get_user_row(conn, norm)
     if existing is not None and existing["id"] != user_id:
-        raise ValueError("A user with that email already exists.")
+        raise ValueError("email cannot be updated")
     row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     if row is None:
         raise ValueError("user not found")
@@ -99,6 +99,7 @@ def apply_email_change(conn: sqlite3.Connection, user_id: int, new_email, *,
                         tokens.PORTAL_RESET, tokens.PORTAL_INVITE):
             tokens.revoke(conn, purpose=purpose, user_id=user_id, email=old)
             tokens.revoke(conn, purpose=purpose, user_id=user_id, email=norm)
+        sessions.revoke_user_sessions(conn, user_id, commit=False)
         write_audit(conn, event_type="email_changed", success=True, user_id=actor_id or user_id,
                     organization_id=row["organization_id"], resource_type="user",
                     resource_id=user_id, ip_address=ip, user_agent=ua,
@@ -283,21 +284,21 @@ def change_password(conn: sqlite3.Connection, user_id: int, old_password: str,
     if len(new_password or "") < 8:
         raise AuthError("New password must be at least 8 characters.", status=400)
     new_hash = passwords.hash_password(new_password)
+    from pipeline.auth import tokens
     conn.execute(
         "UPDATE users SET password_hash=?, must_change_password=0, updated_at=? WHERE id=?",
         (new_hash, _iso(_now()), user_id),
     )
-    conn.commit()
-    # Password change revokes all existing sessions.
-    sessions.revoke_user_sessions(conn, user_id)
-    from pipeline.auth import tokens
+    sessions.revoke_user_sessions(conn, user_id, commit=False)
     tokens.revoke(conn, purpose=tokens.PORTAL_RESET, user_id=user_id, email=row["normalized_email"])
     tokens.revoke(conn, purpose=tokens.PILOT_RESET, user_id=user_id, email=row["normalized_email"])
-    conn.commit()
+    tokens.revoke(conn, purpose=tokens.PORTAL_INVITE, user_id=user_id, email=row["normalized_email"])
     write_audit(conn, event_type="password_changed", success=True, user_id=user_id,
                 organization_id=row["organization_id"], ip_address=ip_address,
                 user_agent=user_agent,
-                details={"required": bool(row["must_change_password"])})
+                details={"required": bool(row["must_change_password"])}, commit=False)
+    conn.commit()
+    _notify_password_changed(row["normalized_email"], pilot=False)
 
 
 def create_user(conn: sqlite3.Connection, *, organization_id: int, email: str,
@@ -345,6 +346,24 @@ def create_user(conn: sqlite3.Connection, *, organization_id: int, email: str,
 GENERIC_CHECK_EMAIL = {"status": "check_email"}
 
 
+def _deliver_identity_mail(message) -> bool:
+    """Send identity mail. Never raises to a public caller. No delivery claim on failure."""
+    from pipeline.auth import mail
+
+    try:
+        mail.send(message)
+        return True
+    except mail.MailNotConfigured:
+        return False
+
+
+def _notify_password_changed(email, *, pilot: bool) -> None:
+    from pipeline.auth import mail
+
+    msg = mail.pilot_password_changed(email) if pilot else mail.portal_password_changed(email)
+    _deliver_identity_mail(msg)
+
+
 def request_password_reset(conn: sqlite3.Connection, email, *, ip=None, ua=None,
                            purpose: str | None = None) -> dict:
     """Always return the same payload. Issue a reset token only when a user exists."""
@@ -360,13 +379,16 @@ def request_password_reset(conn: sqlite3.Connection, email, *, ip=None, ua=None,
         page = "contractor-account.html" if purpose == tokens.PILOT_RESET else "login.html"
         mode = "reset"
         link = mail.token_link(page, mode, raw)
-        if purpose == tokens.PILOT_RESET:
-            mail.send(mail.pilot_password_reset(norm, link, expires))
-        else:
-            mail.send(mail.portal_password_reset(norm, link, expires))
+        delivered = _deliver_identity_mail(
+            mail.pilot_password_reset(norm, link, expires) if purpose == tokens.PILOT_RESET
+            else mail.portal_password_reset(norm, link, expires))
+        if not delivered:
+            tokens.revoke(conn, purpose=purpose, user_id=row["id"], email=norm)
+            conn.commit()
         write_audit(conn, event_type="password_reset_requested", success=True,
                     user_id=row["id"], organization_id=row["organization_id"],
-                    ip_address=ip, user_agent=ua, details={"email": norm})
+                    ip_address=ip, user_agent=ua,
+                    details={"email": norm, "result": "sent" if delivered else "mail_unavailable"})
     else:
         write_audit(conn, event_type="password_reset_requested", success=True,
                     ip_address=ip, user_agent=ua, details={"email": norm, "result": "no_account"})
@@ -376,7 +398,7 @@ def request_password_reset(conn: sqlite3.Connection, email, *, ip=None, ua=None,
 def complete_password_reset(conn: sqlite3.Connection, raw_token, new_password, *,
                             purpose: str | None = None, ip=None, ua=None) -> None:
     """Set a new password. Does not create a session."""
-    from pipeline.auth import mail, tokens
+    from pipeline.auth import tokens
 
     purpose = purpose or tokens.PORTAL_RESET
     if len(new_password or "") < 8 or len(new_password or "") > 200:
@@ -401,6 +423,8 @@ def complete_password_reset(conn: sqlite3.Connection, raw_token, new_password, *
             )
             sessions.revoke_user_sessions(conn, user["id"], commit=False)
             tokens.revoke(conn, purpose=purpose, user_id=user["id"], email=user["normalized_email"])
+            tokens.revoke(conn, purpose=tokens.PORTAL_INVITE, user_id=user["id"],
+                          email=user["normalized_email"])
             write_audit(conn, event_type="password_reset_completed", success=True,
                         user_id=user["id"], organization_id=user["organization_id"],
                         ip_address=ip, user_agent=ua, details={"email": user["normalized_email"]},
@@ -410,7 +434,4 @@ def complete_password_reset(conn: sqlite3.Connection, raw_token, new_password, *
                     ip_address=ip, user_agent=ua, details={"reason": "invalid_token"})
         raise AuthError("invalid or expired token", status=400) from exc
     if user is not None:
-        if purpose == tokens.PILOT_RESET:
-            mail.send(mail.pilot_password_changed(user["normalized_email"]))
-        else:
-            mail.send(mail.portal_password_changed(user["normalized_email"]))
+        _notify_password_changed(user["normalized_email"], pilot=(purpose == tokens.PILOT_RESET))

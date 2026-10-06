@@ -124,13 +124,26 @@ def _route(h, platform: Platform, conn, method, path, query, body):
             new_token, principal = accounts.complete_contractor_signup(conn, platform, body, ip=ip, ua=ua)
             return h._json(201, accounts.me(conn, platform, principal), raw_cookie=_cookie(h, new_token))
         if path == "/api/pilot/auth/inspect":
-            purpose = body.get("purpose") or auth_tokens.PILOT_SIGNUP
-            return h._json(200, accounts.inspect_auth_token(conn, body.get("token"), purpose=purpose))
-        if path == "/api/pilot/auth/login":
-            if throttle.pilot.hit("login_ip", str(ip or "unknown")):
+            if throttle.pilot.hit("inspect_ip", str(ip or "unknown")):
                 raise PilotError("too_many_requests", status=429)
-            new_token, principal = accounts.sign_in(conn, platform, body.get("email"), body.get("password"),
-                                                    visit_id=body.get("visit_id"), ip=ip, ua=ua)
+            purpose = body.get("purpose") if body.get("purpose") is not None else auth_tokens.PILOT_SIGNUP
+            raw = body.get("token")
+            if not isinstance(purpose, str) or purpose not in auth_tokens.PURPOSES:
+                raise PilotError("invalid_token", status=400)
+            if raw is not None and not isinstance(raw, str):
+                raise PilotError("invalid_token", status=400)
+            return h._json(200, accounts.inspect_auth_token(conn, raw, purpose=purpose))
+        if path == "/api/pilot/auth/login":
+            try:
+                new_token, principal = accounts.sign_in(conn, platform, body.get("email"), body.get("password"),
+                                                        visit_id=body.get("visit_id"), ip=ip, ua=ua)
+            except AuthError:
+                email = normalize_email(body.get("email") or "")
+                if throttle.pilot.hit("login_ip", str(ip or "unknown")):
+                    raise PilotError("too_many_requests", status=429)
+                if email and throttle.pilot.hit("login_email", email):
+                    raise PilotError("too_many_requests", status=429)
+                raise
             return h._json(200, accounts.me(conn, platform, principal), raw_cookie=_cookie(h, new_token))
         if path == "/api/pilot/auth/forgot":
             email = (body.get("email") or "").strip().lower()
@@ -143,8 +156,11 @@ def _route(h, platform: Platform, conn, method, path, query, body):
         if path == "/api/pilot/auth/reset":
             if throttle.pilot.hit("reset_ip", str(ip or "unknown")):
                 raise PilotError("too_many_requests", status=429)
+            password = body.get("password") or ""
+            if len(password) < 8 or len(password) > 200:
+                raise PilotError("weak_password")
             try:
-                complete_password_reset(conn, body.get("token"), body.get("password"),
+                complete_password_reset(conn, body.get("token"), password,
                                         purpose=auth_tokens.PILOT_RESET, ip=ip, ua=ua)
             except AuthError as exc:
                 raise PilotError("invalid_token" if exc.status == 400 else "invalid_login", status=exc.status)

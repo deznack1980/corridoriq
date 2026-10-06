@@ -170,9 +170,17 @@ def request_contractor_signup(conn, platform: Platform, body: dict, *, ip=None, 
                                 email=email, context=context, ip=ip)
     conn.commit()
     link = mail.token_link("contractor-account.html", "complete", raw)
-    mail.send(mail.pilot_signup_verification(email, link, expires))
+    try:
+        mail.send(mail.pilot_signup_verification(email, link, expires))
+        delivered = True
+    except mail.MailNotConfigured:
+        tokens.revoke(conn, purpose=tokens.PILOT_SIGNUP, email=email)
+        conn.commit()
+        delivered = False
     auth.write_audit(conn, event_type="email_verification_requested", success=True,
-                     ip_address=ip, user_agent=ua, details={"email": email, "purpose": "pilot_signup"})
+                     ip_address=ip, user_agent=ua,
+                     details={"email": email, "purpose": "pilot_signup",
+                              "result": "sent" if delivered else "mail_unavailable"})
     return dict(auth.GENERIC_CHECK_EMAIL)
 
 

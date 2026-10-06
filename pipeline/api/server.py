@@ -33,6 +33,7 @@ from pipeline.auth.service import (
     get_current_user,
     login,
     logout,
+    normalize_email,
     request_password_reset,
     serialize_user_context,
     write_audit,
@@ -213,8 +214,10 @@ class ApiHandler(BaseHTTPRequestHandler):
         if set_cookie is not None:
             self.send_header("Set-Cookie", self._cookie_header(set_cookie))
         if clear_cookie:
-            self.send_header("Set-Cookie",
-                             f"{COOKIE}=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax")
+            cleared = [f"{COOKIE}=", "Path=/", "HttpOnly", "Max-Age=0", "SameSite=Lax"]
+            if settings.AUTH_PRODUCTION:
+                cleared.append("Secure")
+            self.send_header("Set-Cookie", "; ".join(cleared))
         if raw_cookie is not None:
             self.send_header("Set-Cookie", raw_cookie)
         self.end_headers()
@@ -451,7 +454,13 @@ class ApiHandler(BaseHTTPRequestHandler):
     # ---- GET routes -------------------------------------------------------
     def _route_get(self, conn, path, query):
         if path == "/api/health":
-            return self._json(200, {"ok": True, "service": "corridoriq-sales"})
+            from pipeline.auth.readiness import production_status
+            status = production_status()
+            payload = {"ok": status["ready"], "service": "corridoriq-sales", "ready": status["ready"]}
+            if not status["ready"]:
+                payload["problems"] = status["problems"]
+                return self._json(503, payload)
+            return self._json(200, payload)
         if path == "/api/auth/me":
             user = self._require_user(conn)
             if user is None:
@@ -564,11 +573,23 @@ class ApiHandler(BaseHTTPRequestHandler):
         ip, ua = self._client()
 
         # --- auth (login / recovery / invitation are unauthenticated writes) ---
+        _auth_json = {
+            "/api/auth/login", "/api/auth/forgot", "/api/auth/reset",
+            "/api/auth/accept-invite", "/api/auth/change-password",
+        }
+        if method == "POST" and path in _auth_json and not self._is_json():
+            return self._json(415, {"error": "json_required"})
         if method == "POST" and path == "/api/auth/login":
-            if throttle.portal.hit("login_ip", str(ip or "unknown")):
-                return self._json(429, {"error": "too_many_requests"})
-            token, user = login(conn, body.get("email", ""), body.get("password", ""),
-                                ip_address=ip, user_agent=ua)
+            try:
+                token, user = login(conn, body.get("email", ""), body.get("password", ""),
+                                    ip_address=ip, user_agent=ua)
+            except AuthError:
+                email = normalize_email(body.get("email", ""))
+                if throttle.portal.hit("login_ip", str(ip or "unknown")):
+                    return self._json(429, {"error": "too_many_requests"})
+                if email and throttle.portal.hit("login_email", email):
+                    return self._json(429, {"error": "too_many_requests"})
+                raise
             return self._json(200, {"user": serialize_user_context(user)}, set_cookie=token)
         if method == "POST" and path == "/api/auth/forgot":
             email = (body.get("email") or "").strip().lower()
@@ -671,6 +692,8 @@ class ApiHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    from pipeline.auth.readiness import refuse_unsafe_production
+    refuse_unsafe_production()
     init_db()  # ensure schema + seed once at startup
     server = ThreadingHTTPServer((HOST, PORT), ApiHandler)
     # Pre-compute Today's Accounts and the organization opportunity scan after

@@ -171,8 +171,11 @@ def create_contractor_account(conn: sqlite3.Connection, operator: dict, data, *,
 def _issue_owner_invitation(conn, owner_id, email, company_name, org_id, *, operator_id=None, ip=None, ua=None):
     from pipeline.auth import mail, tokens
 
-    raw, expires = tokens.issue(conn, purpose=tokens.PORTAL_INVITE, ttl=tokens.INVITE_TTL,
-                                user_id=owner_id, email=email, context={"organization_id": org_id}, ip=ip)
+    row = conn.execute("SELECT password_hash FROM users WHERE id=?", (owner_id,)).fetchone()
+    raw, expires = tokens.issue(
+        conn, purpose=tokens.PORTAL_INVITE, ttl=tokens.INVITE_TTL, user_id=owner_id, email=email,
+        password_marker=tokens.password_marker(row["password_hash"] if row else None),
+        context={"organization_id": org_id}, ip=ip)
     conn.commit()
     mail.send(mail.portal_owner_invitation(email, mail.token_link("login.html", "accept-invite", raw),
                                            expires, company_name))
@@ -202,15 +205,20 @@ def accept_owner_invitation(conn: sqlite3.Connection, raw_token, new_password, *
             org = conn.execute("SELECT * FROM organizations WHERE id=?", (user["organization_id"],)).fetchone()
             if org is None or not org["is_active"] or org["account_type"] != CONTRACTOR:
                 raise tokens.TokenError()
+            marker = tokens.password_marker(user["password_hash"])
             tokens.consume(conn, raw_token, purpose=tokens.PORTAL_INVITE,
-                           user_id=user["id"], email=user["normalized_email"])
+                           user_id=user["id"], email=user["normalized_email"],
+                           password_marker=marker)
             conn.execute(
                 "UPDATE users SET password_hash=?, must_change_password=0, failed_login_count=0, "
                 "locked_until=NULL, updated_at=? WHERE id=?",
                 (passwords.hash_password(new_password), store.now_iso(), user["id"]),
             )
             mark_email_verified(conn, user["id"], user["normalized_email"])
+            from pipeline.auth import sessions
+            sessions.revoke_user_sessions(conn, user["id"], commit=False)
             tokens.revoke(conn, purpose=tokens.PORTAL_INVITE, user_id=user["id"], email=user["normalized_email"])
+            tokens.revoke(conn, purpose=tokens.PORTAL_RESET, user_id=user["id"], email=user["normalized_email"])
             write_audit(conn, event_type="contractor_owner_invitation_accepted", success=True,
                         user_id=user["id"], organization_id=user["organization_id"],
                         ip_address=ip, user_agent=ua, details={"email": user["normalized_email"]},
@@ -219,6 +227,8 @@ def accept_owner_invitation(conn: sqlite3.Connection, raw_token, new_password, *
         write_audit(conn, event_type="contractor_owner_invitation_accepted", success=False,
                     ip_address=ip, user_agent=ua, details={"reason": "invalid_token"})
         raise AuthError("invalid or expired token", status=400) from exc
+    from pipeline.auth.service import _notify_password_changed
+    _notify_password_changed(user["normalized_email"], pilot=False)
     return {"ok": True}
 
 

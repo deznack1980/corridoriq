@@ -80,8 +80,11 @@ def update_user(conn: sqlite3.Connection, user: dict, target_id: int, data: dict
     if "email" in data:
         require_permission(user, "users.update")
         from pipeline.auth.service import apply_email_change
-        apply_email_change(conn, target_id, data["email"], actor_id=user["id"],
-                           ip=ip, ua=ua, commit=False)
+        try:
+            apply_email_change(conn, target_id, data["email"], actor_id=user["id"],
+                               ip=ip, ua=ua, commit=False)
+        except ValueError as exc:
+            raise ValidationError(str(exc))
     if "is_active" in data:
         require_permission(user, "users.disable")
         updates["is_active"] = 1 if data["is_active"] else 0

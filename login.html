@@ -162,11 +162,16 @@
       const resetCard = document.getElementById("resetCard");
       const inviteCard = document.getElementById("inviteCard");
 
-      function fragmentToken() {
+      function takeFragmentToken() {
         const h = location.hash || "";
         const m = h.match(/(?:^#|&)t=([^&]+)/);
-        return m ? decodeURIComponent(m[1]) : "";
+        const raw = m ? decodeURIComponent(m[1]) : "";
+        if (raw && window.history && history.replaceState) {
+          history.replaceState(null, "", location.pathname + location.search);
+        }
+        return raw;
       }
+      const fragmentToken = takeFragmentToken();
 
       function showOnly(card) {
         [loginCard, changeCard, forgotCard, resetCard, inviteCard].forEach((el) => {
@@ -277,7 +282,7 @@
         const msg = document.getElementById("resetMsg");
         msg.textContent = ""; msg.className = "auth-msg";
         const { ok, data } = await postJSON("/api/auth/reset", {
-          token: fragmentToken(), password: document.getElementById("resetPw").value,
+          token: fragmentToken, password: document.getElementById("resetPw").value,
         });
         if (!ok) {
           msg.textContent = (data && data.error) || "This link is invalid or has expired.";
@@ -294,7 +299,7 @@
         const msg = document.getElementById("inviteMsg");
         msg.textContent = ""; msg.className = "auth-msg";
         const { ok, data } = await postJSON("/api/auth/accept-invite", {
-          token: fragmentToken(), password: document.getElementById("invitePw").value,
+          token: fragmentToken, password: document.getElementById("invitePw").value,
         });
         if (!ok) {
           msg.textContent = (data && data.error) || "This invitation is invalid or has expired.";

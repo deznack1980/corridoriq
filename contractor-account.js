@@ -9,10 +9,14 @@
     el.textContent = err ? P.errText(err) : "";
   }
 
-  function fragmentToken() {
+  function takeFragmentToken() {
     const h = location.hash || "";
     const m = h.match(/(?:^#|&)t=([^&]+)/);
-    return m ? decodeURIComponent(m[1]) : "";
+    const raw = m ? decodeURIComponent(m[1]) : "";
+    if (raw && window.history && history.replaceState) {
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+    return raw;
   }
 
   function modeOf() {
@@ -49,6 +53,7 @@
     const formId = mode + "Form";
     const shown = document.getElementById(formId);
     if (shown) shown.hidden = false;
+    const fragmentToken = takeFragmentToken();
     const attr = P.attribution();
     if (attr.referral_code) {
       try { referral = await P.api("GET", "/api/pilot/referral/" + encodeURIComponent(attr.referral_code)); } catch (e) { referral = null; }
@@ -112,7 +117,7 @@
       show(null, document.getElementById("completeErr"));
       try {
         const res = await P.api("POST", "/api/pilot/auth/complete-signup", {
-          token: fragmentToken(),
+          token: fragmentToken,
           password: document.getElementById("coPassword").value,
         });
         location.href = res.account_type === "supplier" ? "/supplier-inbox.html" : "/contractor-home.html";
@@ -128,7 +133,7 @@
       btn.disabled = true;
       show(null, document.getElementById("verifyErr"));
       try {
-        await P.api("POST", "/api/pilot/auth/verify-email", { token: fragmentToken() });
+        await P.api("POST", "/api/pilot/auth/verify-email", { token: fragmentToken });
         const ok = document.getElementById("verifyOk");
         ok.hidden = false;
         ok.textContent = P.t("email_verification_verified");
@@ -162,7 +167,7 @@
       show(null, document.getElementById("resetErr"));
       try {
         await P.api("POST", "/api/pilot/auth/reset", {
-          token: fragmentToken(),
+          token: fragmentToken,
           password: document.getElementById("rePassword").value,
         });
         const ok = document.getElementById("resetOk");

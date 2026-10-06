@@ -43,6 +43,7 @@ class Throttle:
 # Portal (main application) authentication limits per 10 minutes.
 PORTAL_LIMITS = {
     "login_ip": 60,          # failed sign-ins only
+    "login_email": 20,       # failed sign-ins only
     "forgot_ip": 10,
     "forgot_email": 5,
     "reset_ip": 20,
@@ -57,7 +58,9 @@ PILOT_LIMITS = {
     "signup_email": 5,
     "verify_ip": 10,
     "verify_email": 5,
-    "login_ip": 30,
+    "login_ip": 30,          # failed sign-ins only
+    "login_email": 20,       # failed sign-ins only
+    "inspect_ip": 30,
     "forgot_ip": 10,
     "forgot_email": 5,
     "reset_ip": 20,
