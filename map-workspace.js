@@ -52,7 +52,7 @@
       root._mapWorkspace.update(o);
       return root._mapWorkspace;
     }
-    const state = { context: o.context || "assigned", scope: "", map: null, layer: null, points: [], today: [], markers: {} };
+    const state = { context: o.context || "assigned", scope: "", map: null, layer: null, points: [], today: [], markers: {}, resizeObserver: null };
     const orgAllowed = CIQ.hasPerm("companies.view");
     root.innerHTML = `
       <div class="mw-head">
@@ -84,13 +84,30 @@
     if (!window.L) {
       $(".mw-map").innerHTML = CIQ.errorBanner("Map library failed to load.");
     } else {
-      state.map = L.map($(".mw-map"), { scrollWheelZoom: true }).setView(PHOENIX, 10);
+      const mapEl = $(".mw-map");
+      state.map = L.map(mapEl, { scrollWheelZoom: true }).setView(PHOENIX, 10);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(state.map);
       state.layer = L.layerGroup().addTo(state.map);
       state.map.on("zoomend", draw);
+
+      // The portal shell and responsive grid can change the map's width after
+      // Leaflet initializes. Re-measure whenever that happens so tiles and
+      // overlays do not render against a stale container size.
+      const refreshSize = () => {
+        if (!state.map || !mapEl.isConnected || mapEl.clientWidth === 0 || mapEl.clientHeight === 0) return;
+        state.map.invalidateSize({ pan: false, debounceMoveend: true });
+      };
+      requestAnimationFrame(refreshSize);
+      setTimeout(refreshSize, 120);
+      if (window.ResizeObserver) {
+        state.resizeObserver = new ResizeObserver(() => requestAnimationFrame(refreshSize));
+        state.resizeObserver.observe(mapEl);
+      } else {
+        window.addEventListener("resize", refreshSize, { passive: true });
+      }
     }
 
     function params(extra) {
@@ -200,9 +217,23 @@
         setTimeout(() => { const m = state.markers[pid]; if (m) m.openPopup(); }, 250);
       }));
       if (state.map) {
-        if (state.points.length) state.map.fitBounds(L.latLngBounds(state.points.map((p) => [p.lat, p.lon])).pad(0.05));
-        else state.map.setView(PHOENIX, 10);
+        // Recalculate the rendered map size before fitting bounds. Without this,
+        // the admin shell can leave Leaflet using pre-layout dimensions.
+        state.map.invalidateSize({ pan: false, debounceMoveend: true });
+        if (state.points.length) {
+          const bounds = L.latLngBounds(state.points.map((p) => [p.lat, p.lon]));
+          if (bounds.isValid()) state.map.fitBounds(bounds.pad(0.05), { maxZoom: 16 });
+          else state.map.setView(PHOENIX, 10);
+        } else {
+          state.map.setView(PHOENIX, 10);
+        }
         draw();
+        requestAnimationFrame(() => {
+          if (state.map) {
+            state.map.invalidateSize({ pan: false, debounceMoveend: true });
+            draw();
+          }
+        });
       }
       if (o.onLoaded) o.onLoaded(feed, layer);
     }
