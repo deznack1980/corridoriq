@@ -45,6 +45,7 @@
     ["assignments.html", "Assign work"],
     ["estimator-work-queue.html", "Review estimates"],
     ["user-management.html", "Manage users"],
+    ["experience-preview.html", "Experience preview"],
     ["catalog-admin.html", "Administration"],
   ];
 
