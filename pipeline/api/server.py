@@ -51,8 +51,11 @@ import os
 
 # Bind address/port. Defaults are unchanged (loopback only); a hosted
 # deployment sets these explicitly, normally still behind a reverse proxy.
+# Port precedence: CORRIDORIQ_PORT, then the platform-standard PORT (Railway),
+# then the Windows SALES_API_PORT default. Host stays loopback unless
+# CORRIDORIQ_HOST is set (e.g. 0.0.0.0 on Railway).
 HOST = os.environ.get("CORRIDORIQ_HOST", "127.0.0.1")
-PORT = int(os.environ.get("CORRIDORIQ_PORT", settings.SALES_API_PORT))
+PORT = int(os.environ.get("CORRIDORIQ_PORT") or os.environ.get("PORT") or settings.SALES_API_PORT)
 COOKIE = settings.SESSION_COOKIE_NAME
 
 # Portal files served same-origin (allowlist by extension + known names).
