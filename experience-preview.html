@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Experience Preview</title>
+  <link rel="icon" href="assets/brand/corridoriq-mark-amber.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+</head>
+<body>
+  <template id="pageContent">
+    <section class="hero-band">
+      <div class="hero-top">
+        <div>
+          <div class="eyebrow">Owner tools</div>
+          <h2>Customer experience preview</h2>
+          <div class="hero-sub">Review the live contractor and supplier journeys without bypassing customer authentication.</div>
+        </div>
+        <div class="hero-actions">
+          <a class="btn btn-sm" href="admin-dashboard.html">Back to admin</a>
+          <a class="btn btn-sm" href="/" target="_blank" rel="noopener">Open public site</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-title">Supplier experience <span class="sub">Your admin session may view employee surfaces because the admin role has organization-wide permissions</span></div>
+    <div class="split-even" style="margin-bottom:28px">
+      <div class="card card-pad">
+        <div class="eyebrow">Public + access</div>
+        <h3 style="margin-top:0">Supply-house journey</h3>
+        <p class="muted">Review the marketing page, provisioning language, and the exact sign-in screen a new or existing branch encounters.</p>
+        <div class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px">
+          <a class="btn btn-sm" href="/for-suppliers.html" target="_blank" rel="noopener">Public supplier page</a>
+          <a class="btn btn-sm" href="/login.html" target="_blank" rel="noopener">Supplier / admin sign in</a>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div class="eyebrow">Authenticated workspace</div>
+        <h3 style="margin-top:0">Supplier team views</h3>
+        <p class="muted">Open the same rep and manager workspaces used by provisioned supply-house teams. Authorization remains enforced by the backend.</p>
+        <div class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px">
+          <a class="btn btn-sm" href="/sales-dashboard.html" target="_blank" rel="noopener">Sales rep workspace</a>
+          <a class="btn btn-sm" href="/team-dashboard.html" target="_blank" rel="noopener">Manager workspace</a>
+          <a class="btn btn-sm" href="/supplier-inbox.html" target="_blank" rel="noopener">Material request inbox</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">Contractor experience <span class="sub">Contractor accounts intentionally use a separate customer session and data store</span></div>
+    <div class="split-even" style="margin-bottom:28px">
+      <div class="card card-pad">
+        <div class="eyebrow">Public + onboarding</div>
+        <h3 style="margin-top:0">Contractor journey</h3>
+        <p class="muted">Review the contractor page, create-account path, sign-in, password recovery, and email-verification entry points.</p>
+        <div class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px">
+          <a class="btn btn-sm" href="/for-contractors.html" target="_blank" rel="noopener">Public contractor page</a>
+          <a class="btn btn-sm" href="/contractor-account.html?mode=signup" target="_blank" rel="noopener">Create account</a>
+          <a class="btn btn-sm" href="/contractor-account.html?mode=signin" target="_blank" rel="noopener">Contractor sign in</a>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div class="eyebrow">Authenticated contractor</div>
+        <h3 style="margin-top:0">Contractor dashboard</h3>
+        <p class="muted">The protected contractor dashboard requires a real contractor test account. Admin access does not impersonate or read a contractor's private workspace.</p>
+        <div class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px">
+          <a class="btn btn-sm" href="/contractor-home.html" target="_blank" rel="noopener">Open contractor dashboard</a>
+          <a class="btn btn-sm" href="/contractor-request.html" target="_blank" rel="noopener">Open material request</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="eyebrow">Security boundary</div>
+      <h3 style="margin-top:0">No impersonation mode</h3>
+      <p class="muted" style="margin-bottom:0">This owner page is a navigation and QA control room only. Supplier permissions still come from the portal RBAC system, and contractor/supplier pilot accounts still require their own customer credentials. That keeps customer-private data separated while letting you review every front door and authorized workspace.</p>
+    </div>
+  </template>
+
+  <script src="portal-common.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      const user = await CIQ.guard("admin.system", {
+        title: "Experience Preview",
+        subtitle: "Owner QA for contractor and supplier journeys",
+        active: "experience-preview.html",
+      });
+      if (!user) return;
+      CIQ.renderHero();
+    });
+  </script>
+</body>
+</html>
