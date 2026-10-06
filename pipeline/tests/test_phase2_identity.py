@@ -159,8 +159,13 @@ def test_mail_provider_fails_closed_and_sink_is_in_process_only():
     assert mail.sink().outbox(to="a@example.test")
     assert mail.provider_name() == mail.SINK
     monkey = pytest.MonkeyPatch()
-    monkey.setenv(mail.ENV_PROVIDER, "postmark")
+    # An unknown provider, and Postmark without a token, both fail closed.
+    monkey.delenv(mail.ENV_POSTMARK_TOKEN, raising=False)
+    monkey.setenv(mail.ENV_PROVIDER, "sendmail-hack")
     try:
+        with pytest.raises(mail.MailNotConfigured):
+            mail.get_mailer()
+        monkey.setenv(mail.ENV_PROVIDER, "postmark")
         with pytest.raises(mail.MailNotConfigured):
             mail.get_mailer()
     finally:

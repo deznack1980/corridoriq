@@ -220,13 +220,22 @@ def test_production_sink_and_unsupported_provider_fail_readiness(monkeypatch):
     monkeypatch.setenv("CORRIDORIQ_TRUSTED_PROXY_SECRET", "x" * 32)
     monkeypatch.setenv(mail.ENV_PUBLIC_BASE_URL, "https://app.corridoriq.pro")
     monkeypatch.delenv(mail.ENV_PROVIDER, raising=False)
+    monkeypatch.delenv(mail.ENV_POSTMARK_TOKEN, raising=False)
     problems = readiness.production_problems()
     assert "production_mail_sink" in problems
-    monkeypatch.setenv(mail.ENV_PROVIDER, "postmark")
-    problems = readiness.production_problems()
-    assert "production_mail_provider_unsupported" in problems
+    # A genuinely unknown provider is still unsupported and fails closed.
+    monkeypatch.setenv(mail.ENV_PROVIDER, "sendmail-hack")
+    assert "production_mail_provider_unsupported" in readiness.production_problems()
     with pytest.raises(mail.MailNotConfigured):
         mail.get_mailer()
+    # Postmark selected but no token = fails closed (token missing).
+    monkeypatch.setenv(mail.ENV_PROVIDER, "postmark")
+    assert "production_mail_token_missing" in readiness.production_problems()
+    with pytest.raises(mail.MailNotConfigured):
+        mail.get_mailer()
+    # Postmark with a token present clears the mail readiness blocker.
+    monkeypatch.setenv(mail.ENV_POSTMARK_TOKEN, "pm-not-a-real-token")
+    assert readiness.production_problems() == []
     monkeypatch.delenv("CORRIDORIQ_ENV")
     monkeypatch.setattr("pipeline.config.settings.AUTH_PRODUCTION", False)
     assert readiness.production_problems() == []

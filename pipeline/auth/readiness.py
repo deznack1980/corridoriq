@@ -61,6 +61,9 @@ def production_problems() -> list[str]:
     provider = mail.provider_name()
     if provider == mail.SINK:
         problems.append("production_mail_sink")
+    elif provider == mail.POSTMARK:
+        if not (os.environ.get(mail.ENV_POSTMARK_TOKEN) or "").strip():
+            problems.append("production_mail_token_missing")
     else:
         problems.append("production_mail_provider_unsupported")
     base = (os.environ.get(mail.ENV_PUBLIC_BASE_URL) or "").strip()
