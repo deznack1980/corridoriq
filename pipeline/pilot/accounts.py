@@ -173,7 +173,7 @@ def request_contractor_signup(conn, platform: Platform, body: dict, *, ip=None, 
     try:
         mail.send(mail.pilot_signup_verification(email, link, expires))
         delivered = True
-    except mail.MailNotConfigured:
+    except Exception:
         tokens.revoke(conn, purpose=tokens.PILOT_SIGNUP, email=email)
         conn.commit()
         delivered = False

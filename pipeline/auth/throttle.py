@@ -20,6 +20,28 @@ class Throttle:
         self._hits: dict[tuple[str, str], list[float]] = {}
         self._lock = threading.Lock()
 
+    def _window(self, bucket: str, key: str, now: float) -> list[float]:
+        hits = [t for t in self._hits.get((bucket, key), []) if now - t < self.window_s]
+        self._hits[(bucket, key)] = hits
+        return hits
+
+    def blocked(self, bucket: str, key: str) -> bool:
+        """Side-effect-free: True when this key is already at the limit."""
+        limit = self.limits.get(bucket)
+        if not limit or key is None:
+            return False
+        now = time.monotonic()
+        with self._lock:
+            return len(self._window(bucket, key, now)) >= limit
+
+    def login_blocked(self, ip, email) -> bool:
+        """True when IP or email failure buckets already block a login attempt."""
+        if self.blocked("login_ip", str(ip or "unknown")):
+            return True
+        if email and self.blocked("login_email", email):
+            return True
+        return False
+
     def hit(self, bucket: str, key: str) -> bool:
         """Record one attempt; return True when the caller must be throttled."""
         limit = self.limits.get(bucket)
@@ -27,9 +49,8 @@ class Throttle:
             return False
         now = time.monotonic()
         with self._lock:
-            hits = [t for t in self._hits.get((bucket, key), []) if now - t < self.window_s]
+            hits = self._window(bucket, key, now)
             if len(hits) >= limit:
-                self._hits[(bucket, key)] = hits
                 return True
             hits.append(now)
             self._hits[(bucket, key)] = hits

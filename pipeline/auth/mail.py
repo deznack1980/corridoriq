@@ -87,7 +87,7 @@ def provider_name() -> str:
 def get_mailer():
     # Production has no identity provider yet. Refuse the sink and every
     # unsupported name so a live process cannot silently "deliver" in memory.
-    if (os.environ.get("CORRIDORIQ_ENV") or "").strip().lower() == "production":
+    if (os.environ.get("CORRIDORIQ_ENV") or "") == "production":
         raise MailNotConfigured("production identity mail is not configured")
     name = provider_name()
     if name == SINK:

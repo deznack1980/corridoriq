@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import threading
 
 try:  # Preferred: Argon2id
     from argon2 import PasswordHasher
@@ -79,3 +80,19 @@ def needs_rehash(stored_hash: str) -> bool:
 def generate_temp_password(length: int = 16) -> str:
     """Cryptographically secure temporary password (URL-safe)."""
     return secrets.token_urlsafe(length)[:length]
+
+
+# One precomputed dummy hash using the live algorithm/work factor. The
+# password that produced it is discarded so it cannot authenticate anyone.
+_DUMMY_HASH: str | None = None
+_DUMMY_LOCK = threading.Lock()
+
+
+def dummy_password_hash() -> str:
+    """Valid stored-hash string for unknown-user verification work."""
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        with _DUMMY_LOCK:
+            if _DUMMY_HASH is None:
+                _DUMMY_HASH = hash_password(secrets.token_urlsafe(24))
+    return _DUMMY_HASH

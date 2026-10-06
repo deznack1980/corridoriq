@@ -215,7 +215,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", self._cookie_header(set_cookie))
         if clear_cookie:
             cleared = [f"{COOKIE}=", "Path=/", "HttpOnly", "Max-Age=0", "SameSite=Lax"]
-            if settings.AUTH_PRODUCTION:
+            from pipeline.auth.readiness import is_production
+            if is_production():
                 cleared.append("Secure")
             self.send_header("Set-Cookie", "; ".join(cleared))
         if raw_cookie is not None:
@@ -237,9 +238,10 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _cookie_header(self, token: str) -> str:
+        from pipeline.auth.readiness import is_production
         parts = [f"{COOKIE}={token}", "Path=/", "HttpOnly", "SameSite=Lax",
                  f"Max-Age={settings.SESSION_TTL_HOURS * 3600}"]
-        if settings.AUTH_PRODUCTION:
+        if is_production():
             parts.append("Secure")
         return "; ".join(parts)
 
@@ -456,7 +458,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/health":
             from pipeline.auth.readiness import production_status
             status = production_status()
-            payload = {"ok": status["ready"], "service": "corridoriq-sales", "ready": status["ready"]}
+            payload = {"ok": status["ready"], "service": "corridoriq-sales",
+                       "ready": status["ready"], "environment": status["environment"]}
             if not status["ready"]:
                 payload["problems"] = status["problems"]
                 return self._json(503, payload)
@@ -580,36 +583,50 @@ class ApiHandler(BaseHTTPRequestHandler):
         if method == "POST" and path in _auth_json and not self._is_json():
             return self._json(415, {"error": "json_required"})
         if method == "POST" and path == "/api/auth/login":
+            email, password = body.get("email", ""), body.get("password", "")
+            if not isinstance(email, str) or not isinstance(password, str):
+                return self._json(400, {"error": "invalid_request"})
+            norm = normalize_email(email)
+            if throttle.portal.login_blocked(ip, norm):
+                return self._json(429, {"error": "too_many_requests"})
             try:
-                token, user = login(conn, body.get("email", ""), body.get("password", ""),
-                                    ip_address=ip, user_agent=ua)
+                token, user = login(conn, email, password, ip_address=ip, user_agent=ua)
             except AuthError:
-                email = normalize_email(body.get("email", ""))
-                if throttle.portal.hit("login_ip", str(ip or "unknown")):
-                    return self._json(429, {"error": "too_many_requests"})
-                if email and throttle.portal.hit("login_email", email):
-                    return self._json(429, {"error": "too_many_requests"})
+                throttle.portal.hit("login_ip", str(ip or "unknown"))
+                if norm:
+                    throttle.portal.hit("login_email", norm)
                 raise
             return self._json(200, {"user": serialize_user_context(user)}, set_cookie=token)
         if method == "POST" and path == "/api/auth/forgot":
-            email = (body.get("email") or "").strip().lower()
+            email = body.get("email", "")
+            if email is None:
+                email = ""
+            if not isinstance(email, str):
+                return self._json(400, {"error": "invalid_request"})
+            email = email.strip().lower()
             if throttle.portal.hit("forgot_ip", str(ip or "unknown")):
                 return self._json(429, {"error": "too_many_requests"})
             if email and throttle.portal.hit("forgot_email", email):
                 return self._json(202, {"status": "check_email"})
-            return self._json(202, request_password_reset(conn, body.get("email"), ip=ip, ua=ua,
+            return self._json(202, request_password_reset(conn, email, ip=ip, ua=ua,
                                                           purpose=auth_tokens.PORTAL_RESET))
         if method == "POST" and path == "/api/auth/reset":
+            token, password = body.get("token"), body.get("password")
+            if not isinstance(token, str) or not isinstance(password, str):
+                return self._json(400, {"error": "invalid_request"})
             if throttle.portal.hit("reset_ip", str(ip or "unknown")):
                 return self._json(429, {"error": "too_many_requests"})
-            complete_password_reset(conn, body.get("token"), body.get("password"),
+            complete_password_reset(conn, token, password,
                                     purpose=auth_tokens.PORTAL_RESET, ip=ip, ua=ua)
             return self._json(200, {"ok": True})
         if method == "POST" and path == "/api/auth/accept-invite":
+            token, password = body.get("token"), body.get("password")
+            if not isinstance(token, str) or not isinstance(password, str):
+                return self._json(400, {"error": "invalid_request"})
             if throttle.portal.hit("invite_accept_ip", str(ip or "unknown")):
                 return self._json(429, {"error": "too_many_requests"})
             return self._json(200, contractor_accounts.accept_owner_invitation(
-                conn, body.get("token"), body.get("password"), ip=ip, ua=ua))
+                conn, token, password, ip=ip, ua=ua))
 
         user = self._require_user(conn)
         if user is None:
@@ -623,8 +640,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             logout(conn, token, user_id=user["id"], ip_address=ip, user_agent=ua)
             return self._json(200, {"ok": True}, clear_cookie=True)
         if method == "POST" and path == "/api/auth/change-password":
-            change_password(conn, user["id"], body.get("old_password", ""),
-                            body.get("new_password", ""), ip_address=ip, user_agent=ua)
+            old_password, new_password = body.get("old_password", ""), body.get("new_password", "")
+            if not isinstance(old_password, str) or not isinstance(new_password, str):
+                return self._json(400, {"error": "invalid_request"})
+            change_password(conn, user["id"], old_password, new_password, ip_address=ip, user_agent=ua)
             # Password change revokes sessions; force re-login.
             return self._json(200, {"ok": True}, clear_cookie=True)
 

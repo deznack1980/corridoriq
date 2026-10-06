@@ -236,7 +236,8 @@ SESSION_TTL_HOURS = 12
 AUTH_MAX_FAILED_LOGINS = 5
 AUTH_LOCKOUT_MINUTES = 15
 # Secure cookies + HTTPS assumptions only in production.
-AUTH_PRODUCTION = _os.environ.get("CORRIDORIQ_ENV", "").lower() == "production"
+# Exact value only: "prod", "live", "production ", and other aliases do not match.
+AUTH_PRODUCTION = _os.environ.get("CORRIDORIQ_ENV") == "production"
 CRM_PAGE_SIZE_DEFAULT = 50
 CRM_PAGE_SIZE_MAX = 200
 

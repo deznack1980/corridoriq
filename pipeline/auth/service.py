@@ -184,6 +184,8 @@ def _get_user_row(conn: sqlite3.Connection, normalized_email: str):
 def login(conn: sqlite3.Connection, email: str, password: str, *,
           ip_address: str | None = None, user_agent: str | None = None):
     """Authenticate and open a session. Raises AuthError (generic) on failure."""
+    if not isinstance(email, str) or not isinstance(password, str):
+        raise AuthError(GENERIC_LOGIN_ERROR, status=400)
     norm = normalize_email(email)
     row = _get_user_row(conn, norm)
     now = _now()
@@ -196,12 +198,12 @@ def login(conn: sqlite3.Connection, email: str, password: str, *,
                     details={"email": norm, "reason": reason})
         raise AuthError(GENERIC_LOGIN_ERROR)
 
+    stored = row["password_hash"] if row is not None else passwords.dummy_password_hash()
+    password_ok = passwords.verify_password(password, stored)
+
     if row is None:
-        # Do a dummy hash to keep timing similar and avoid user enumeration.
-        passwords.verify_password(password, "scrypt$32768$8$1$00$00")
         _fail("no_such_user")
 
-    # Locked? (parse defensively, but never let _fail be swallowed here)
     if row["locked_until"]:
         locked_until = None
         try:
@@ -214,7 +216,7 @@ def login(conn: sqlite3.Connection, email: str, password: str, *,
     if not row["is_active"]:
         _fail("disabled")
 
-    if not passwords.verify_password(password, row["password_hash"]):
+    if not password_ok:
         new_count = (row["failed_login_count"] or 0) + 1
         locked_until = None
         if new_count >= settings.AUTH_MAX_FAILED_LOGINS:
@@ -354,6 +356,8 @@ def _deliver_identity_mail(message) -> bool:
         mail.send(message)
         return True
     except mail.MailNotConfigured:
+        return False
+    except Exception:
         return False
 
 
