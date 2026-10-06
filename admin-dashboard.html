@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CorridorIQ — Supplier Command Center</title>
+  <title>CorridorIQ — Owner / Admin Command Center</title>
   <link rel="icon" href="assets/brand/corridoriq-mark-amber.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/vendor/leaflet-1.9.4/leaflet.css" />
   <link rel="stylesheet" href="portal.css" />
@@ -14,8 +14,8 @@
       <div class="hero-top">
         <div>
           <div class="eyebrow" id="heroDate">Phoenix metro</div>
-          <h2 id="heroTitle">Supplier command center</h2>
-          <div class="hero-sub">Qualified accounts, permit activity, and verified contacts across the organization.</div>
+          <h2 id="heroTitle">Owner / admin command center</h2>
+          <div class="hero-sub">Organization-wide intelligence, operations, user administration, and customer-experience review.</div>
         </div>
         <div class="stack" style="align-items:flex-end;gap:12px">
           <div id="refreshCard"></div>
@@ -23,12 +23,27 @@
             <a class="btn btn-sm" href="ceo-morning-brief.html">CEO Morning Brief</a>
             <a class="btn btn-sm" href="opportunities.html?context=organization">Review opportunities</a>
             <a class="btn btn-sm" href="assignments.html">Assign work</a>
+            <a class="btn btn-sm" href="experience-preview.html">Experience preview</a>
             <button class="btn btn-sm btn-primary" id="runRefreshBtn" type="button">Run morning refresh</button>
           </div>
         </div>
       </div>
       <div id="execStrip"></div>
     </section>
+
+    <div class="section-title">Customer experience <span class="sub">Open the live public and account entry points without impersonating a customer</span></div>
+    <div class="card card-pad" style="margin-bottom:22px">
+      <div class="stack" style="flex-direction:row;flex-wrap:wrap;gap:8px">
+        <a class="btn btn-sm" href="/" target="_blank" rel="noopener">Public home</a>
+        <a class="btn btn-sm" href="/for-contractors.html" target="_blank" rel="noopener">Contractor page</a>
+        <a class="btn btn-sm" href="/contractor-account.html?mode=signup" target="_blank" rel="noopener">Contractor create account</a>
+        <a class="btn btn-sm" href="/contractor-account.html?mode=signin" target="_blank" rel="noopener">Contractor sign in</a>
+        <a class="btn btn-sm" href="/for-suppliers.html" target="_blank" rel="noopener">Supplier page</a>
+        <a class="btn btn-sm" href="/login.html" target="_blank" rel="noopener">Supplier / admin sign in</a>
+        <a class="btn btn-sm" href="/supplier-inbox.html" target="_blank" rel="noopener">Supplier request inbox</a>
+      </div>
+      <p class="muted" style="margin:12px 0 0">Protected customer pages keep their own authentication. Admin review does not bypass or impersonate contractor or supplier accounts.</p>
+    </div>
 
     <div class="section-title">Today's accounts <span class="sub">Accounts that passed today's checks — the list is never padded</span></div>
     <div id="todaysAccounts"></div>
