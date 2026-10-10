@@ -29,6 +29,10 @@ AUTH_TABLES = ("organizations", "users", "sessions", "roles", "permissions",
 _AUTH_COLUMN_MIGRATIONS = (
     ("users", "email_verified_at", "TEXT"),
     ("users", "email_verified_address", "TEXT"),
+    ("users", "account_kind", "TEXT NOT NULL DEFAULT 'employee'"),
+    ("users", "account_state", "TEXT NOT NULL DEFAULT 'ACTIVE'"),
+    ("users", "business_name", "TEXT"),
+    ("users", "business_category", "TEXT"),
 )
 
 # Pilot roles (platform database only).

@@ -1,7 +1,10 @@
 """Transactional email abstraction for identity flows.
 
-Two adapters exist: an in-memory development/test ``sink`` and a ``postmark``
-transport for real delivery. Messages are built here (subject, text body,
+Three adapters exist: an in-memory development/test ``sink``, the ``postmark``
+HTTPS API transport (production default) and a strict ``smtp`` transport (for
+example Postmark's SMTP endpoint). Both network transports verify the server
+certificate and hostname and require TLS 1.2+. Nothing ever falls back to
+plaintext or to the sink. Messages are built here (subject, text body,
 link); an adapter only has to implement ``send``. The adapter transports the
 message — it holds no CorridorIQ security logic (token generation, hashing,
 expiry and fail-closed behavior all stay in the auth layer).
@@ -16,10 +19,13 @@ from __future__ import annotations
 
 import json
 import os
+import smtplib
+import ssl
 import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from email.message import EmailMessage
 from datetime import datetime, timezone
 
 from pipeline.config import settings
@@ -31,6 +37,15 @@ ENV_MAIL_FROM = "CORRIDORIQ_MAIL_FROM"
 ENV_POSTMARK_STREAM = "CORRIDORIQ_POSTMARK_STREAM"
 SINK = "sink"
 POSTMARK = "postmark"
+SMTP = "smtp"
+
+# Strict SMTP transport (optional). Values come from the environment only.
+ENV_SMTP_HOST = "CORRIDORIQ_SMTP_HOST"
+ENV_SMTP_PORT = "CORRIDORIQ_SMTP_PORT"
+ENV_SMTP_USERNAME = "CORRIDORIQ_SMTP_USERNAME"
+ENV_SMTP_PASSWORD = "CORRIDORIQ_SMTP_PASSWORD"
+ENV_SMTP_TLS = "CORRIDORIQ_SMTP_TLS"  # "starttls" (default, port 587) or "implicit" (465)
+SMTP_TLS_MODES = ("starttls", "implicit")
 
 # Transactional sender identity (overridable via ENV_MAIL_FROM). The sending
 # domain must already be authenticated with the provider (SPF/DKIM/DMARC).
@@ -47,6 +62,8 @@ PILOT_PASSWORD_CHANGED = "pilot_password_changed"
 PORTAL_INVITE = "portal_owner_invitation"
 PORTAL_RESET = "portal_password_reset"
 PORTAL_PASSWORD_CHANGED = "portal_password_changed"
+PORTAL_VERIFY = "portal_email_verification"
+PORTAL_ALREADY_REGISTERED = "portal_already_registered"
 
 
 class MailNotConfigured(Exception):
@@ -103,11 +120,18 @@ class DevSinkMailer:
 _sink = DevSinkMailer()
 
 
+def tls_context() -> ssl.SSLContext:
+    """Certificate- and hostname-verifying client context, TLS 1.2 minimum."""
+    ctx = ssl.create_default_context()
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
+
 def _default_transport(url: str, data: bytes, headers: dict) -> tuple[int, bytes]:  # pragma: no cover - network
     """POST to Postmark over HTTPS. Isolated so tests inject a fake transport."""
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=tls_context()) as resp:
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
         return exc.code, b""
@@ -157,6 +181,99 @@ class PostmarkMailer:
             raise MailSendError(f"postmark send rejected (HTTP {int(status)})")
 
 
+class SmtpMailer:
+    """Sends a :class:`Message` over SMTP with mandatory, verified TLS.
+
+    STARTTLS mode refuses servers that do not offer STARTTLS (no plaintext
+    login, ever). Both modes verify the certificate chain and hostname with
+    :func:`tls_context`. Failures raise :class:`MailSendError` with a generic
+    reason; the password, message body and server replies are never echoed.
+    """
+
+    name = SMTP
+
+    def __init__(self, host: str, port: int, username: str, password: str, *,
+                 tls_mode: str = "starttls", sender: str | None = None,
+                 smtp_factory=None, smtp_ssl_factory=None):
+        if tls_mode not in SMTP_TLS_MODES:
+            raise MailNotConfigured("smtp tls mode must be starttls or implicit")
+        self._host, self._port = host, int(port)
+        self._username, self._password = username, password
+        self._tls_mode = tls_mode
+        self._from = (sender or os.environ.get(ENV_MAIL_FROM) or DEFAULT_FROM).strip()
+        self._smtp = smtp_factory or smtplib.SMTP
+        self._smtp_ssl = smtp_ssl_factory or smtplib.SMTP_SSL
+
+    def build_message(self, message: "Message") -> EmailMessage:
+        msg = EmailMessage()
+        msg["From"] = self._from
+        msg["To"] = message.to
+        msg["Subject"] = message.subject
+        msg.set_content(message.text)
+        return msg
+
+    def send(self, message: "Message") -> None:
+        email = self.build_message(message)
+        try:
+            if self._tls_mode == "implicit":
+                with self._smtp_ssl(self._host, self._port, timeout=10, context=tls_context()) as smtp:
+                    smtp.login(self._username, self._password)
+                    smtp.send_message(email)
+                return
+            with self._smtp(self._host, self._port, timeout=10) as smtp:
+                smtp.ehlo()
+                if not smtp.has_extn("starttls"):
+                    raise MailSendError("smtp server does not offer STARTTLS")
+                smtp.starttls(context=tls_context())
+                smtp.ehlo()
+                smtp.login(self._username, self._password)
+                smtp.send_message(email)
+        except MailSendError:
+            raise
+        except Exception as exc:
+            raise MailSendError(f"smtp send failed: {type(exc).__name__}") from None
+
+
+def smtp_settings() -> dict:
+    """SMTP configuration from the environment. Contains the password: never log it."""
+    port_raw = (os.environ.get(ENV_SMTP_PORT) or "587").strip()
+    return {
+        "host": (os.environ.get(ENV_SMTP_HOST) or "").strip(),
+        "port": int(port_raw) if port_raw.isdigit() else 0,
+        "username": (os.environ.get(ENV_SMTP_USERNAME) or "").strip(),
+        "password": os.environ.get(ENV_SMTP_PASSWORD) or "",
+        "tls_mode": (os.environ.get(ENV_SMTP_TLS) or "starttls").strip().lower(),
+    }
+
+
+def smtp_problems() -> list[str]:
+    cfg = smtp_settings()
+    problems = []
+    if not cfg["host"]:
+        problems.append("smtp_host_missing")
+    if not cfg["port"]:
+        problems.append("smtp_port_invalid")
+    if not cfg["username"] or not cfg["password"]:
+        problems.append("smtp_credentials_missing")
+    if cfg["tls_mode"] not in SMTP_TLS_MODES:
+        problems.append("smtp_tls_mode_invalid")
+    return problems
+
+
+def diagnostics() -> dict:
+    """Secret-free configuration summary for administrators (never public)."""
+    name = provider_name()
+    tls_mode = smtp_settings()["tls_mode"]
+    return {
+        "provider": name if name in (SINK, POSTMARK, SMTP) else "unsupported",
+        "postmark_token_present": bool((os.environ.get(ENV_POSTMARK_TOKEN) or "").strip()),
+        "smtp_configured": not smtp_problems(),
+        "smtp_tls_mode": tls_mode if tls_mode in SMTP_TLS_MODES else "invalid",
+        "sender_override": bool((os.environ.get(ENV_MAIL_FROM) or "").strip()),
+        "public_base_url_https": public_base_url().lower().startswith("https://"),
+    }
+
+
 def provider_name() -> str:
     return (os.environ.get(ENV_PROVIDER) or SINK).strip().lower()
 
@@ -178,6 +295,12 @@ def get_mailer():
         if not token:
             raise MailNotConfigured("postmark token is not configured")
         return PostmarkMailer(token)
+    if name == SMTP:
+        if smtp_problems():
+            raise MailNotConfigured("smtp transport is not fully configured")
+        cfg = smtp_settings()
+        return SmtpMailer(cfg["host"], cfg["port"], cfg["username"], cfg["password"],
+                          tls_mode=cfg["tls_mode"])
     # Deliberately unsupported until a provider is chosen and configured
     # (SPF/DKIM/DMARC, sender identity, bounce handling). Fail closed.
     raise MailNotConfigured(f"email provider {name!r} is not configured on this server")
@@ -259,6 +382,26 @@ def portal_password_reset(to: str, link: str, expires_at: str) -> Message:
         text=(f"Open this link to choose a new password:\n\n{link}\n\n"
               f"The link expires at {_hours(expires_at)} UTC and can be used once. "
               "If you did not request a password reset, you can ignore this message; your password has not changed."))
+
+
+def portal_email_verification(to: str, link: str, expires_at: str) -> Message:
+    return Message(
+        to=to, kind=PORTAL_VERIFY, link=link,
+        subject="Verify your CorridorIQ email address",
+        text=(f"Open this link to verify your email and unlock your CorridorIQ account features:\n\n{link}\n\n"
+              f"The link expires at {_hours(expires_at)} UTC and can be used once. "
+              "If you did not create a CorridorIQ account, you can ignore this message."))
+
+
+def portal_already_registered(to: str) -> Message:
+    """Sent instead of creating a duplicate account. Carries no token."""
+    base = public_base_url()
+    return Message(
+        to=to, kind=PORTAL_ALREADY_REGISTERED,
+        subject="You already have a CorridorIQ account",
+        text=("Someone tried to create a CorridorIQ account with this email address, which already has one.\n\n"
+              f"Sign in: {base}/login.html\nForgot your password? {base}/reset-password.html\n\n"
+              "If this was not you, no action is needed."))
 
 
 def portal_password_changed(to: str) -> Message:

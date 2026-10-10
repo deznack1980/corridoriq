@@ -18,6 +18,19 @@ In every other case — no secret configured, no/empty presented secret, wrong
 secret, missing/malformed/multiple CF-Connecting-IP, or a direct connection
 without the secret — the resolver falls back to the real TCP peer. It never
 fails open, so no client-controlled header can spoof the client IP.
+
+A third, independent mode serves Railway's edge (opt-in via
+``CORRIDORIQ_CLIENT_IP_SOURCE=railway``). Railway documents that its edge sets
+``X-Real-IP`` to the client's address, and overwrites any client-supplied copy.
+It publishes no stable proxy range, so no CIDR is hard-coded. Instead, the
+header is honored only when the TCP peer is a non-public address (the
+connection arrived over Railway's internal network) and the header holds
+exactly one public address. A public peer, which would mean the edge was
+bypassed, falls back to the peer. ``X-Forwarded-For`` is still never consulted.
+
+When no mode attributes the request, the peer may be a platform-internal hop
+shared by every visitor. :func:`is_shared_address` lets the throttle treat
+such keys as platform-wide rather than per visitor.
 """
 
 from __future__ import annotations
@@ -30,6 +43,9 @@ CONNECTING_IP = "CF-Connecting-IP"
 PROXY_SECRET = "X-CorridorIQ-Proxy-Secret"
 SECRET_ENV = "CORRIDORIQ_TRUSTED_PROXY_SECRET"
 HOSTED_ENV = "CORRIDORIQ_HOSTED_PROXY"
+REAL_IP = "X-Real-IP"
+SOURCE_ENV = "CORRIDORIQ_CLIENT_IP_SOURCE"
+RAILWAY = "railway"
 
 
 def _loopback(value: str) -> bool:
@@ -57,11 +73,39 @@ def hosted_proxy_enabled(value: str | None = None) -> bool:
     return raw == "1"
 
 
+def client_ip_source(value: str | None = None) -> str:
+    """``"railway"`` only when explicitly configured; anything else is ``"peer"``."""
+    raw = os.environ.get(SOURCE_ENV, "") if value is None else value
+    return RAILWAY if raw.strip().lower() == RAILWAY else "peer"
+
+
+def _internal(value: str | None) -> bool:
+    """Non-public and non-loopback: a platform network hop, not a visitor."""
+    try:
+        addr = ipaddress.ip_address(value)
+    except (TypeError, ValueError):
+        return False
+    return not addr.is_global and not addr.is_loopback
+
+
+def _public(value: str | None) -> bool:
+    try:
+        return ipaddress.ip_address(value).is_global
+    except (TypeError, ValueError):
+        return False
+
+
+def is_shared_address(ip: str | None) -> bool:
+    """True when ``ip`` is a platform-internal hop shared by many visitors."""
+    return _internal(ip)
+
+
 def resolve_client_ip(peer: str | None, headers, *, secret: str | None = None,
-                      hosted: bool | None = None) -> str | None:
+                      hosted: bool | None = None, source: str | None = None) -> str | None:
     """Return the address to record. Untrusted headers never replace the peer.
 
-    ``hosted`` overrides the ``CORRIDORIQ_HOSTED_PROXY`` env flag for tests.
+    ``hosted`` and ``source`` override the ``CORRIDORIQ_HOSTED_PROXY`` and
+    ``CORRIDORIQ_CLIENT_IP_SOURCE`` env settings for tests.
     """
     peer_ip = _single_ip(peer) or (peer or None)
     configured = os.environ.get(SECRET_ENV, "") if secret is None else secret
@@ -83,4 +127,12 @@ def resolve_client_ip(peer: str | None, headers, *, secret: str | None = None,
         and (hosted_on or (peer_ip and _loopback(peer_ip)))
     ):
         return connecting
+    # Railway edge mode (explicit opt-in): the edge overwrites X-Real-IP, and
+    # only connections relayed over the platform network reach us from a
+    # non-public peer. Require exactly one public address in the header.
+    src = client_ip_source() if source is None else client_ip_source(source)
+    if src == RAILWAY and headers is not None and _internal(peer_ip):
+        real = _single_ip(headers.get(REAL_IP))
+        if real and _public(real):
+            return real
     return peer_ip

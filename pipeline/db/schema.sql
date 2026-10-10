@@ -667,9 +667,16 @@ CREATE TABLE IF NOT EXISTS users (
     -- Email ownership proof. Verification counts only while
     -- email_verified_address equals the current normalized_email.
     email_verified_at   TEXT,
-    email_verified_address TEXT
+    email_verified_address TEXT,
+    -- Self-service onboarding. Employees keep the defaults; contractor and
+    -- supplier accounts are created only by pipeline.auth.onboarding.
+    account_kind        TEXT NOT NULL DEFAULT 'employee',
+    account_state       TEXT NOT NULL DEFAULT 'ACTIVE',
+    business_name       TEXT,
+    business_category   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id);
+CREATE INDEX IF NOT EXISTS idx_users_kind_state ON users(account_kind, account_state);
 
 -- roles / permissions / role_permissions / user_roles (RBAC).
 CREATE TABLE IF NOT EXISTS roles (

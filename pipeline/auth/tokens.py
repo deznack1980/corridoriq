@@ -34,8 +34,10 @@ PILOT_RESET = "pilot_password_reset"
 # Purposes (portal store)
 PORTAL_INVITE = "portal_owner_invite"
 PORTAL_RESET = "portal_password_reset"
+PORTAL_VERIFY = "portal_email_verify"  # self-service contractor/supplier accounts
 
-PURPOSES = frozenset({PILOT_SIGNUP, PILOT_VERIFY, PILOT_RESET, PORTAL_INVITE, PORTAL_RESET})
+PURPOSES = frozenset({PILOT_SIGNUP, PILOT_VERIFY, PILOT_RESET, PORTAL_INVITE, PORTAL_RESET,
+                      PORTAL_VERIFY})
 
 # Lifetimes
 SIGNUP_TTL = timedelta(hours=24)

@@ -45,6 +45,9 @@ from pipeline.crm.service import ValidationError
 from pipeline.products import service as products
 from pipeline.reports import catalog as reports_catalog
 from pipeline import pipeline_runs
+from pipeline.api import seo
+from pipeline.api.public_preview import public_preview
+from pipeline.auth import onboarding
 from pipeline.db.database import get_connection, init_db
 
 import os
@@ -123,6 +126,19 @@ _SALES_COMPANY_RE = re.compile(
     rf"^/api/sales/companies/{_ID}(?:/(projects|permits|activities|relationship))?$")
 _SALES_TASK_RE = re.compile(rf"^/api/sales/tasks/{_ID}$")
 _ADMIN_USER_RE = re.compile(rf"^/api/admin/users/{_ID}$")
+_ADMIN_ACCOUNT_ACTION_RE = re.compile(rf"^/api/admin/users/{_ID}/(approve-supplier|suspend)$")
+
+# Names used by the self-service onboarding pages for the existing flows.
+_AUTH_ALIASES = {
+    "/api/auth/forgot-password": "/api/auth/forgot",
+    "/api/auth/reset-password": "/api/auth/reset",
+}
+
+# Generated, public crawler files (see pipeline.api.seo).
+_SEO_FILES = {
+    "/robots.txt": (seo.robots_txt, "text/plain; charset=utf-8"),
+    "/sitemap.xml": (seo.sitemap_xml, "application/xml; charset=utf-8"),
+}
 
 
 def _factory():
@@ -326,11 +342,24 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
         return True
 
+    def _text(self, body: str, ctype: str) -> None:
+        data = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.end_headers()
+        self.wfile.write(data)
+
     # ---- dispatch ---------------------------------------------------------
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         if not path.startswith("/api/"):
+            if path in _SEO_FILES:
+                build, ctype = _SEO_FILES[path]
+                return self._text(build(), ctype)
             # Supplier referral links (/join/<code>) open the contractor join
             # page; the page reads the code from the URL.
             if _JOIN_RE.match(path) and self._serve_static("/" + _JOIN_PAGE):
@@ -467,6 +496,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 payload["problems"] = status["problems"]
                 return self._json(503, payload)
             return self._json(200, payload)
+        if path in ("/api/public/preview", "/api/public/explore"):
+            # Static, synthetic demonstration data; never reads the database.
+            return self._json(200, public_preview())
         if path == "/api/auth/me":
             user = self._require_user(conn)
             if user is None:
@@ -481,6 +513,35 @@ class ApiHandler(BaseHTTPRequestHandler):
         self._cur_user = user
         ip, ua = self._client()
 
+        # --- self-service contractor / supplier workspaces (no live data) ---
+        if path == "/api/contractor/dashboard":
+            return self._json(200, onboarding.contractor_dashboard(user))
+        if path == "/api/supplier/dashboard":
+            return self._json(200, onboarding.supplier_dashboard(user))
+        if path == "/api/contractor/intelligence":
+            onboarding.deny_protected_contractor(user, "contractor.intelligence.view")
+            return self._json(200, {"items": [], "note": "No protected intelligence records are exposed on this route."})
+        if path == "/api/contractor/quotes":
+            onboarding.deny_protected_contractor(user, "contractor.quotes.view")
+            return self._json(200, {"items": [], "note": "No private quotations yet."})
+        if path == "/api/supplier/rfqs":
+            onboarding.deny_protected_supplier(user, "supplier.rfq.access")
+            return self._json(200, {"items": []})
+        if path == "/api/supplier/contacts":
+            onboarding.deny_protected_supplier(user, "supplier.contacts.view")
+            return self._json(200, {"items": []})
+        if path == "/api/supplier/commercial":
+            onboarding.deny_protected_supplier(user, "supplier.commercial.view")
+            return self._json(200, {"items": []})
+
+        # Everything below is employee-only (CRM, intelligence, admin).
+        onboarding.require_employee_workspace(user)
+
+        if path == "/api/admin/mail-status":
+            from pipeline.auth.rbac import require_permission
+            from pipeline.auth import mail as mail_module
+            require_permission(user, "admin.system")
+            return self._json(200, mail_module.diagnostics())
         if path == "/api/sales/dashboard":
             return self._json(200, crm.dashboard(conn, user))
         if path == "/api/admin/dashboard":
@@ -577,11 +638,16 @@ class ApiHandler(BaseHTTPRequestHandler):
     # ---- write routes -----------------------------------------------------
     def _route_write(self, conn, method, path, body):
         ip, ua = self._client()
+        # Onboarding pages call these names; they are the same production flows.
+        path = _AUTH_ALIASES.get(path, path)
 
-        # --- auth (login / recovery / invitation are unauthenticated writes) ---
+        # --- auth (login / recovery / invitation / self-service registration
+        #     are unauthenticated writes) ---
         _auth_json = {
             "/api/auth/login", "/api/auth/forgot", "/api/auth/reset",
             "/api/auth/accept-invite", "/api/auth/change-password",
+            "/api/auth/register/contractor", "/api/auth/register/supplier",
+            "/api/auth/verify-email", "/api/auth/resend-verification",
         }
         if method == "POST" and path in _auth_json and not self._is_json():
             return self._json(415, {"error": "json_required"})
@@ -630,6 +696,39 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._json(429, {"error": "too_many_requests"})
             return self._json(200, contractor_accounts.accept_owner_invitation(
                 conn, token, password, ip=ip, ua=ua))
+        if method == "POST" and path in ("/api/auth/register/contractor", "/api/auth/register/supplier"):
+            email = body.get("email") or body.get("business_email") or ""
+            if not isinstance(email, str):
+                return self._json(400, {"error": "invalid_request"})
+            if throttle.portal.hit("register_ip", str(ip or "unknown")):
+                return self._json(429, {"error": "too_many_requests"})
+            norm = normalize_email(email)
+            if norm and throttle.portal.hit("register_email", norm):
+                return self._json(429, {"error": "too_many_requests"})
+            kind = "contractor" if path.endswith("/contractor") else "supplier"
+            token, user, sent = onboarding.register(conn, kind, body, ip=ip, ua=ua)
+            return self._json(201, {"user": serialize_user_context(user),
+                                    "verification_sent": sent}, set_cookie=token)
+        if method == "POST" and path == "/api/auth/verify-email":
+            token = body.get("token")
+            if not isinstance(token, str):
+                return self._json(400, {"error": "invalid_request"})
+            if throttle.portal.hit("verify_ip", str(ip or "unknown")):
+                return self._json(429, {"error": "too_many_requests"})
+            user = onboarding.verify_email(conn, token, ip=ip, ua=ua)
+            return self._json(200, {"ok": True, "user": serialize_user_context(user)})
+        if method == "POST" and path == "/api/auth/resend-verification":
+            email = body.get("email") or ""
+            if not isinstance(email, str):
+                return self._json(400, {"error": "invalid_request"})
+            if throttle.portal.hit("resend_ip", str(ip or "unknown")):
+                return self._json(429, {"error": "too_many_requests"})
+            session_user = get_current_user(conn, self._token())
+            key = normalize_email(session_user["email"] if session_user else email)
+            if key and throttle.portal.hit("resend_email", key):
+                return self._json(202, {"ok": True, "message": onboarding.GENERIC_RESEND_ACK})
+            return self._json(202, onboarding.resend_verification(
+                conn, email, session_user=session_user, ip=ip, ua=ua))
 
         user = self._require_user(conn)
         if user is None:
@@ -649,6 +748,39 @@ class ApiHandler(BaseHTTPRequestHandler):
             change_password(conn, user["id"], old_password, new_password, ip_address=ip, user_agent=ua)
             # Password change revokes sessions; force re-login.
             return self._json(200, {"ok": True}, clear_cookie=True)
+
+        # --- self-service contractor / supplier accounts ---
+        if method == "PATCH" and path in ("/api/contractor/profile", "/api/supplier/profile"):
+            if not self._is_json():
+                return self._json(415, {"error": "json_required"})
+            if path == "/api/contractor/profile":
+                onboarding.require_contractor(user)
+            else:
+                onboarding.require_supplier(user)
+            return self._json(200, {"user": serialize_user_context(
+                onboarding.update_self_profile(conn, user, body))})
+        if method == "POST" and path == "/api/contractor/rfq":
+            onboarding.deny_protected_contractor(user, "contractor.rfq.submit")
+            # Gate passes, but live RFQs for these accounts are not built yet:
+            # never acknowledge a request that is not stored.
+            return self._json(501, {"error": "live_rfq_not_available"})
+        if method == "POST" and path == "/api/supplier/quotes":
+            onboarding.deny_protected_supplier(user, "supplier.quote.submit")
+            return self._json(501, {"error": "live_quotes_not_available"})
+
+        # Everything below is employee-only (CRM, intelligence, admin).
+        onboarding.require_employee_workspace(user)
+
+        m = _ADMIN_ACCOUNT_ACTION_RE.match(path)
+        if m and method == "POST":
+            if not self._is_json():
+                return self._json(415, {"error": "json_required"})
+            target, action = int(m.group(1)), m.group(2)
+            if action == "approve-supplier":
+                result = onboarding.approve_supplier(conn, user, target, ip=ip, ua=ua)
+            else:
+                result = onboarding.suspend_account(conn, user, target, ip=ip, ua=ua)
+            return self._json(200, {"user": serialize_user_context(result)})
 
         # --- sales ---
         m = _SALES_COMPANY_RE.match(path)
@@ -714,8 +846,11 @@ class ApiHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    from pipeline.auth.readiness import refuse_unsafe_production
+    from pipeline.auth.readiness import production_advisories, refuse_unsafe_production
     refuse_unsafe_production()
+    for code in production_advisories():
+        # Non-blocking; e.g. client_ip_unattributed -> set CORRIDORIQ_CLIENT_IP_SOURCE.
+        print(f"WARNING: {code}")
     init_db()  # ensure schema + seed once at startup
     server = ThreadingHTTPServer((HOST, PORT), ApiHandler)
     # Pre-compute Today's Accounts and the organization opportunity scan after

@@ -175,6 +175,11 @@ _KNOWLEDGE_V21_COLUMNS = [
     # Verified email ownership (existing users stay unverified).
     ("users", "email_verified_at", "TEXT"),
     ("users", "email_verified_address", "TEXT"),
+    # Self-service onboarding (additive; existing users stay employees).
+    ("users", "account_kind", "TEXT NOT NULL DEFAULT 'employee'"),
+    ("users", "account_state", "TEXT NOT NULL DEFAULT 'ACTIVE'"),
+    ("users", "business_name", "TEXT"),
+    ("users", "business_category", "TEXT"),
 ]
 
 
@@ -189,7 +194,12 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         if column in cols:
             continue
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        except sqlite3.OperationalError as exc:
+            # Another process (server vs. scheduled job) migrated first.
+            if "duplicate column" not in str(exc).lower():
+                raise
     conn.commit()
 
 

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Explore CorridorIQ — Construction Intelligence + Procurement</title>
+  <meta name="description" content="Explore CorridorIQ without creating an account. See how contractors source materials and how supply houses understand Phoenix-metro demand." />
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+  <link rel="stylesheet" href="site.css" />
+  <link rel="stylesheet" href="auth-public.css" />
+</head>
+<body class="site">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="site-brand" href="/" aria-label="CorridorIQ home">
+        <img src="assets/brand/corridoriq-mark.svg" alt="" />
+        <div><div class="t">CorridorIQ</div><div class="s">Construction Intelligence + Procurement</div></div>
+      </a>
+      <nav class="site-links" aria-label="Primary">
+        <a class="on" href="explore.html">Explore Platform</a>
+        <a href="for-suppliers.html">For Supply Houses</a>
+        <a href="for-contractors.html">For Contractors</a>
+      </nav>
+      <div class="site-cta">
+        <a class="btn btn-ghost" href="login.html">Sign In</a>
+        <a class="btn btn-positive" href="register-contractor.html">Contractor Sign Up</a>
+        <a class="btn btn-primary" href="register-supplier.html">Supplier Sign Up</a>
+      </div>
+      <button class="site-burger" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="site-hero compact">
+      <div class="wrap">
+        <div>
+          <div class="kicker">Explore without an account</div>
+          <h1>See the platform<br />before you join.</h1>
+          <p class="lede">CorridorIQ helps Phoenix-area contractors source materials and helps supply houses understand where demand is forming. The examples below are demonstration data — not live customer records.</p>
+          <div class="hero-ctas">
+            <a class="btn btn-lg btn-positive" href="register-contractor.html">Contractor Sign Up</a>
+            <a class="btn btn-lg btn-primary" href="register-supplier.html">Supplier Sign Up</a>
+            <a class="btn btn-lg btn-on-dark" href="login.html">Sign In</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="preview">
+      <div class="wrap">
+        <div class="sec-head">
+          <div class="kicker">Representative opportunities</div>
+          <h2>What a public preview looks like.</h2>
+          <p id="previewDisclaimer">Demonstration data only. Private contacts, supplier pricing, and internal scoring are not shown.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="preview-table" id="oppTable">
+            <thead><tr><th>Example</th><th>Market</th><th>Trade</th><th>Stage</th></tr></thead>
+            <tbody><tr><td colspan="4">Loading demonstration data…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec tint" id="contractor-flow">
+      <div class="wrap">
+        <div class="sec-head">
+          <div class="kicker green">For contractors</div>
+          <h2>Procurement without changing how you work.</h2>
+        </div>
+        <ol class="steps-v" id="contractorSteps"></ol>
+        <div class="row" style="margin-top:22px">
+          <a class="btn btn-positive" href="register-contractor.html">Create contractor account</a>
+          <a class="btn" href="for-contractors.html">Contractor details</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="supplier-flow">
+      <div class="wrap">
+        <div class="sec-head">
+          <div class="kicker">For supply houses</div>
+          <h2>How suppliers benefit.</h2>
+        </div>
+        <ul class="ticks" id="supplierBenefits"></ul>
+        <div class="row" style="margin-top:22px">
+          <a class="btn btn-primary" href="register-supplier.html">Create supplier account</a>
+          <a class="btn" href="for-suppliers.html">Supplier details</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-foot">
+    <div class="wrap">
+      <div>
+        <a class="site-brand" href="/" style="margin-bottom:12px"><img src="assets/brand/corridoriq-mark.svg" alt="" /><div><div class="t">CorridorIQ</div></div></a>
+        <div style="max-width:340px;line-height:1.6">Construction Intelligence + Procurement for supply houses and contractors.</div>
+      </div>
+      <div><h5>Platform</h5><a href="explore.html">Explore Platform</a><a href="for-suppliers.html">For Supply Houses</a><a href="for-contractors.html">For Contractors</a></div>
+      <div><h5>Account</h5><a href="login.html">Sign In</a><a href="register-contractor.html">Contractor Sign Up</a><a href="register-supplier.html">Supplier Sign Up</a></div>
+      <div class="legal"><span>© <span id="year">2026</span> CorridorIQ · CorridorIQ.pro</span><span>Project data sourced from public permit records.</span></div>
+    </div>
+  </footer>
+  <script src="site.js"></script>
+  <script src="explore.js"></script>
+</body>
+</html>

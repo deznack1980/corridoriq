@@ -64,12 +64,25 @@ def production_problems() -> list[str]:
     elif provider == mail.POSTMARK:
         if not (os.environ.get(mail.ENV_POSTMARK_TOKEN) or "").strip():
             problems.append("production_mail_token_missing")
+    elif provider == mail.SMTP:
+        problems.extend(f"production_{code}" for code in mail.smtp_problems())
     else:
         problems.append("production_mail_provider_unsupported")
     base = (os.environ.get(mail.ENV_PUBLIC_BASE_URL) or "").strip()
     if not base.lower().startswith("https://"):
         problems.append("public_base_url_not_https")
     return problems
+
+
+def production_advisories() -> list[str]:
+    """Non-blocking production warnings (printed at startup, never public)."""
+    if not is_production():
+        return []
+    from pipeline.api.client_address import client_ip_source, hosted_proxy_enabled
+    advisories = []
+    if client_ip_source() != "railway" and not hosted_proxy_enabled():
+        advisories.append("client_ip_unattributed")
+    return advisories
 
 
 def runtime_problems() -> list[str]:

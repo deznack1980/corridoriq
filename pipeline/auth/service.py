@@ -96,7 +96,7 @@ def apply_email_change(conn: sqlite3.Connection, user_id: int, new_email, *,
             (str(new_email).strip(), norm, _iso(_now()), user_id),
         )
         for purpose in (tokens.PILOT_VERIFY, tokens.PILOT_RESET, tokens.PILOT_SIGNUP,
-                        tokens.PORTAL_RESET, tokens.PORTAL_INVITE):
+                        tokens.PORTAL_RESET, tokens.PORTAL_INVITE, tokens.PORTAL_VERIFY):
             tokens.revoke(conn, purpose=purpose, user_id=user_id, email=old)
             tokens.revoke(conn, purpose=purpose, user_id=user_id, email=norm)
         sessions.revoke_user_sessions(conn, user_id, commit=False)
@@ -160,6 +160,12 @@ def build_user_context(conn: sqlite3.Connection, user_row) -> dict:
         "must_change_password": bool(user_row["must_change_password"]),
         "is_active": bool(user_row["is_active"]),
         "email_verified": email_is_verified(user_row),
+        # Self-service onboarding (defaults keep pre-onboarding rows employees).
+        "account_kind": _row_get(user_row, "account_kind") or "employee",
+        "account_state": _row_get(user_row, "account_state") or "ACTIVE",
+        "business_name": _row_get(user_row, "business_name"),
+        "business_category": _row_get(user_row, "business_category"),
+        "phone": _row_get(user_row, "phone"),
         "roles": roles,
         "permissions": permissions,
         "default_landing_page": default_landing_page(roles, permissions),
@@ -260,6 +266,8 @@ def get_current_user(conn: sqlite3.Connection, token: str | None):
     row = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
     if row is None or not row["is_active"]:
         return None
+    if _row_get(row, "account_state") == "SUSPENDED":
+        return None
     return build_user_context(conn, row)
 
 
@@ -309,22 +317,38 @@ def create_user(conn: sqlite3.Connection, *, organization_id: int, email: str,
                 role_names: list[str] | None = None,
                 must_change_password: bool = True,
                 created_by: int | None = None,
-                commit: bool = True) -> int:
-    """Create a user with a hashed password and role assignments."""
+                commit: bool = True,
+                account_kind: str = "employee",
+                account_state: str = "ACTIVE",
+                business_name: str | None = None,
+                business_category: str | None = None) -> int:
+    """Create a user with a hashed password and role assignments.
+
+    ``account_kind`` other than ``employee`` is used only by self-service
+    onboarding, which can never assign the admin role.
+    """
     norm = normalize_email(email)
     if not norm or "@" not in norm:
         raise ValueError("A valid email is required.")
+    if account_kind != "employee" and "admin" in (role_names or []):
+        raise ValueError("Administrator accounts cannot be self-registered.")
     if _get_user_row(conn, norm) is not None:
         raise ValueError("A user with that email already exists.")
     now = _iso(_now())
     pw_hash = passwords.hash_password(password)
     display = display_name or (f"{first_name} {last_name}".strip() or email)
+    fields = ["organization_id", "email", "normalized_email", "password_hash", "first_name",
+              "last_name", "display_name", "phone", "is_active", "must_change_password",
+              "failed_login_count", "created_at", "updated_at"]
+    values = [organization_id, email.strip(), norm, pw_hash, first_name, last_name,
+              display, phone, 1, 1 if must_change_password else 0, 0, now, now]
+    if account_kind != "employee":
+        # Columns exist after migrate_schema; employees keep the defaults.
+        fields += ["account_kind", "account_state", "business_name", "business_category"]
+        values += [account_kind, account_state, business_name, business_category]
     cur = conn.execute(
-        "INSERT INTO users (organization_id, email, normalized_email, password_hash, "
-        "first_name, last_name, display_name, phone, is_active, must_change_password, "
-        "failed_login_count, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,0,?,?)",
-        (organization_id, email.strip(), norm, pw_hash, first_name, last_name,
-         display, phone, 1 if must_change_password else 0, now, now),
+        f"INSERT INTO users ({', '.join(fields)}) VALUES ({', '.join('?' * len(fields))})",
+        values,
     )
     user_id = cur.lastrowid
     for rname in (role_names or []):

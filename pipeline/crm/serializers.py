@@ -74,6 +74,8 @@ _USER_PUBLIC_FIELDS = (
     "id", "organization_id", "email", "first_name", "last_name",
     "display_name", "phone", "is_active", "must_change_password",
     "last_login_at", "created_at",
+    # Self-service onboarding state (admins approve suppliers from this).
+    "account_kind", "account_state", "business_name", "business_category",
 )
 
 
