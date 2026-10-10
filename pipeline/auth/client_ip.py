@@ -4,14 +4,12 @@ Default: use the TCP peer only. Forwarded headers are ignored unless
 CORRIDORIQ_TRUST_PROXY is enabled AND the peer is in the trusted proxy
 list. That prevents arbitrary clients from spoofing X-Forwarded-For.
 
-When the origin sits behind Railway or Cloudflare, operators must:
-  1. Keep the origin unreachable except through that proxy.
-  2. Set CORRIDORIQ_TRUST_PROXY=1
-  3. Set CORRIDORIQ_TRUSTED_PROXIES=loopback,private
-     (or the explicit proxy CIDRs)
+Do not enable TRUST_PROXY until the origin is unreachable except through
+the intended proxy. Prefer an explicit /32 hop over the `private` alias.
+See docs/operations/proxy_trust.md.
 
-Cloudflare's CF-Connecting-IP is preferred over X-Forwarded-For because
-it is a single address written by the edge, not a client-controlled list.
+Cloudflare's CF-Connecting-IP is preferred over X-Forwarded-For only
+when that edge is actually in the HTTP path.
 """
 
 from __future__ import annotations

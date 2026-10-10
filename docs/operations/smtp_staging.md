@@ -38,6 +38,19 @@ Until host, user, and password are all set, mail is written to the
 in-memory outbox (and optional redacted disk copies). Registration and
 login still succeed.
 
+## Domain mail (public DNS, 2026-10-10)
+
+- SPF: `v=spf1 include:secureserver.net -all` — GoDaddy/secureserver only.
+- MX: Microsoft 365.
+- DKIM: Microsoft `selector1`. No Postmark (`pm._domainkey`) record.
+- DMARC: `p=quarantine`.
+
+There is **no Postmark (or other app SMTP) configuration** in the
+application environment. Pointing the app at a new relay without updating
+SPF will fail `-all` alignment. The owner must either use a relay already
+covered by SPF or add the include before go-live. Do not purchase a
+provider from this runbook.
+
 ## Validation after credentials are installed
 
 On staging, with a throwaway inbox the administrator controls:

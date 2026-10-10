@@ -120,6 +120,12 @@ def _register_supplier(port, email):
 # Task 1 — client IP / rate limits
 # ---------------------------------------------------------------------------
 
+def test_trust_proxy_defaults_off():
+    from pipeline.config import settings
+    assert settings.TRUST_PROXY is False
+    assert (settings.TRUSTED_PROXIES or "") == ""
+
+
 def test_forwarded_for_is_ignored_without_trust(monkeypatch):
     from pipeline.config import settings
     monkeypatch.setattr(settings, "TRUST_PROXY", False)
