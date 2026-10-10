@@ -4,6 +4,18 @@
 
   A.qs = (k) => new URLSearchParams(location.search).get(k);
 
+  // One-time links carry the token in the URL fragment (#t=...), which never
+  // reaches the server, logs or Referer headers. Read it once, then remove it
+  // from the address bar and history. ?token= is accepted for older links.
+  A.linkToken = function () {
+    const fromHash = new URLSearchParams(location.hash.replace(/^#/, "")).get("t");
+    const token = fromHash || A.qs("token");
+    if (token && window.history && history.replaceState) {
+      history.replaceState(null, "", location.pathname);
+    }
+    return token;
+  };
+
   A.post = async function (path, payload) {
     const res = await fetch(path, {
       method: "POST",

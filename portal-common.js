@@ -180,7 +180,7 @@
   CIQ.BRAND_MARK = `<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
     <path d="M3 15.5 L9.2 4.5" stroke="#ece8df" stroke-width="2.2" stroke-linecap="round"/>
     <path d="M10.4 15.5 L16.6 4.5" stroke="#ece8df" stroke-width="2.2" stroke-linecap="round" opacity=".55"/>
-    <circle cx="16.6" cy="4.5" r="1.9" fill="#e8952b"/></svg>`;
+    <circle cx="16.6" cy="4.5" r="1.9" fill="#c9a44c"/></svg>`;
   CIQ.BRAND_DESCRIPTOR = "Construction Intelligence + Procurement";
 
   function portalLabel(portal) {

@@ -16,21 +16,21 @@
 
 :root {
   /* Graphite (canonical dark surfaces; --navy-* names preserved) */
-  --navy-950: #0d0f10;
-  --navy-900: #121517;
-  --navy-800: #1a1e21;
-  --navy-700: #23292d;
+  --navy-950: #0a0e1a;
+  --navy-900: #0e1116;
+  --navy-800: #171b22;
+  --navy-700: #212632;
   --navy-600: #3a4248;
   --navy-line: rgba(236, 232, 223, 0.12);
 
   /* Canonical amber (brand / action) */
-  --accent: #e8952b;
-  --accent-hover: #f2ad52;
-  --accent-strong: #a35e0f;
-  --accent-soft: rgba(232, 149, 43, 0.14);
-  --accent-line: #f0d2a4;
-  --accent-on-dark: #f2ad52;
-  --accent-ink: #0d0f10;
+  --accent: #c9a44c;
+  --accent-hover: #e2c179;
+  --accent-strong: #b8912f;
+  --accent-soft: rgba(201, 164, 76, 0.14);
+  --accent-line: rgba(201, 164, 76, 0.35);
+  --accent-on-dark: #e2c179;
+  --accent-ink: #0e1116;
 
   /* Signal green (positive / actionable) — not brand */
   --signal: #13855a;
@@ -42,17 +42,18 @@
   --gold: var(--accent);
   --gold-strong: var(--accent-strong);
   --gold-soft: var(--accent-soft);
-  --ink: var(--navy-950);
-  --ink-2: var(--navy-900);
-  --ink-3: var(--navy-800);
+  /* Approved brand: ink #0e1116 (text on gold, charcoal nav); charcoal #0a0e1a is --navy-950. */
+  --ink: var(--navy-900);
+  --ink-2: var(--navy-800);
+  --ink-3: var(--navy-700);
 
   /* Content surfaces (light) */
-  --bg: #f3f5f8;
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #f7f9fb;
+  --surface-2: #f8f9fb;
   --surface-3: #eef2f6;
-  --border: #e1e6ed;
-  --border-strong: #c9d1dc;
+  --border: #e3e6ec;
+  --border-strong: #cdd2db;
 
   /* Text */
   --text: #0f1b2d;
@@ -78,7 +79,7 @@
   --shadow-sm: 0 1px 2px rgba(13, 15, 16, 0.05);
   --shadow: 0 4px 14px rgba(13, 15, 16, 0.07), 0 1px 2px rgba(13, 15, 16, 0.04);
   --shadow-lg: 0 18px 44px rgba(13, 15, 16, 0.18);
-  --ring: 0 0 0 3px rgba(232, 149, 43, 0.35);
+  --ring: 0 0 0 3px rgba(201, 164, 76, 0.35);
 
   /* Spacing (4px base) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px;
@@ -125,9 +126,9 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
 .sidebar-brand:hover { text-decoration: none; }
 .brand-mark {
   width: 32px; height: 32px; border-radius: 8px; flex: none;
-  background: #1a1e21;
+  background: #171b22;
   color: #ece8df; display: grid; place-items: center;
-  box-shadow: inset 0 0 0 1px rgba(232, 149, 43, .55);
+  box-shadow: inset 0 0 0 1px rgba(201, 164, 76, .55);
 }
 .brand-mark svg { width: 18px; height: 18px; display: block; }
 .brand-text .t { font-weight: 700; font-size: 15.5px; color: #ece8df; letter-spacing: -0.01em; }
@@ -154,7 +155,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
   text-decoration: none; margin-bottom: 1px; transition: background .12s, color .12s;
 }
 .nav-item:hover { background: rgba(255,255,255,.05); color: #fff; text-decoration: none; }
-.nav-item.active { background: rgba(232, 149, 43, .18); color: #fff; font-weight: 600; }
+.nav-item.active { background: rgba(201, 164, 76, .18); color: #fff; font-weight: 600; }
 .nav-item.active::before {
   content: ""; position: absolute; left: -12px; top: 7px; bottom: 7px; width: 3px;
   border-radius: 0 3px 3px 0; background: var(--accent-on-dark);
@@ -234,7 +235,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
   position: relative; overflow: hidden;
   background: var(--navy-900);
   background-image:
-    radial-gradient(900px 300px at 85% -40%, rgba(232, 149, 43, .28), transparent 60%),
+    radial-gradient(900px 300px at 85% -40%, rgba(201, 164, 76, .28), transparent 60%),
     linear-gradient(135deg, var(--navy-800) 0%, var(--navy-950) 100%);
   color: var(--on-dark); border-radius: var(--radius-lg);
   padding: 24px 28px 22px; margin-bottom: 22px;
@@ -475,7 +476,7 @@ a.opp-co:hover { color: var(--accent-strong); text-decoration: none; }
 .badge.red { background: var(--red-bg); color: var(--red); }
 .badge.blue { background: var(--blue-bg); color: var(--blue); }
 .badge.purple { background: var(--purple-bg); color: var(--purple); }
-.badge.gold { background: var(--accent-soft); color: var(--accent-strong); }
+.badge.gold { background: var(--gold-soft); color: var(--gold-strong); }
 .badge.navy { background: var(--navy-800); color: #fff; }
 .badge.outline { background: transparent; border: 1px solid var(--border-strong); color: var(--text-2); }
 .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -745,7 +746,7 @@ details.data-details[open] > summary { border-bottom: 1px solid var(--border); }
 .map-workspace .mw-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .map-workspace .mw-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .map-workspace .mw-legend i.ring { background: transparent; border: 2.5px solid var(--signal); width: 12px; height: 12px; }
-.mw-cluster div { border-radius: 50%; background: rgba(13, 15, 16, 0.86); color: #fff; font-weight: 650; font-size: 12px; text-align: center; box-shadow: 0 0 0 4px rgba(232, 149, 43, 0.28); }
+.mw-cluster div { border-radius: 50%; background: rgba(13, 15, 16, 0.86); color: #fff; font-weight: 650; font-size: 12px; text-align: center; box-shadow: 0 0 0 4px rgba(201, 164, 76, 0.28); }
 .map-pop { font-size: 12.5px; line-height: 1.5; max-width: 270px; font-family: var(--font); }
 .map-pop > a b, .map-pop > b { font-size: 13.5px; }
 .leaflet-container { font-family: var(--font); }

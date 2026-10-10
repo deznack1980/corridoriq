@@ -12,7 +12,7 @@
     .auth-side {
       position: relative; overflow: hidden; color: var(--on-dark); padding: 44px 56px; display: flex; flex-direction: column;
       background: var(--navy-950);
-      background-image: radial-gradient(900px 500px at 80% 10%, rgba(232,149,43,.22), transparent 60%),
+      background-image: radial-gradient(900px 500px at 80% 10%, rgba(201,164,76,.28), transparent 60%),
                         radial-gradient(600px 360px at 0% 100%, rgba(19,133,90,.14), transparent 60%),
                         linear-gradient(180deg, var(--navy-900), var(--navy-950));
     }
@@ -85,7 +85,7 @@
       <div class="auth-wrap">
         <div class="auth-card" id="loginCard">
           <h1>Sign in</h1>
-          <p class="sub">Existing supply-house, employee, and owner/admin accounts sign in here. Activity is audited.</p>
+          <p class="sub">Supply-house, employee, owner/admin, and supplier accounts sign in here. Activity is audited.</p>
           <div class="error-banner" id="expiredBanner" style="display:none">Your session expired. Please sign in again.</div>
           <div class="error-banner" id="originBanner" style="display:none">This page could not reach the CorridorIQ server. Open the sign-in page from the CorridorIQ site address (not a saved file or another server).</div>
           <form id="loginForm" action="javascript:void(0)" method="post" onsubmit="return false">
@@ -153,8 +153,12 @@
           </form>
           <div class="auth-msg" id="changeMsg"></div>
         </div>
-        <div class="auth-alt"><a href="/">&larr; CorridorIQ.pro</a><a href="/for-suppliers.html#walkthrough">Supplier access</a></div>
-        <div class="auth-note">Protected by session security and role-based access control.</div>
+        <div class="auth-alt" style="flex-wrap:wrap;gap:10px">
+          <a href="contractor-account.html?mode=signup">Contractor? Create a free contractor account</a>
+          <a href="register-supplier.html">Supply house? Create Supplier Account</a>
+        </div>
+        <div class="auth-alt"><a href="/">&larr; CorridorIQ.pro</a><a href="explore.html">Explore Platform</a></div>
+        <div class="auth-note">Protected by session security and role-based access control. Administrators are not created through self-registration.</div>
       </div>
     </main>
   </div>

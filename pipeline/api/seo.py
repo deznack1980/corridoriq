@@ -13,7 +13,7 @@ PUBLIC_PATHS = (
     "/explore.html",
     "/for-contractors.html",
     "/for-suppliers.html",
-    "/register-contractor.html",
+    # Contractor registration links to the live pilot sign-up until owner decision D-1.
     "/register-supplier.html",
     "/login.html",
 )

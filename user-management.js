@@ -42,7 +42,7 @@
       try {
         const updated = await CIQ.api.post(`/api/admin/users/${id}/approve-supplier`, {});
         const idx = users.findIndex((x) => x.id === id);
-        if (idx >= 0) Object.assign(users[idx], updated);
+        if (idx >= 0) Object.assign(users[idx], (updated && updated.user) || updated);
         CIQ.toast("Supplier approved", "success"); render();
       } catch (e) { CIQ.toast(e.message, "error"); }
     });

@@ -39,7 +39,7 @@
   <script src="auth-public.js"></script>
   <script>
     const tokenField = document.getElementById("token");
-    const preset = CIQAuth.qs("token");
+    const preset = CIQAuth.linkToken();
     if (preset) tokenField.value = preset;
     CIQAuth.bindForm(document.getElementById("verifyForm"), async (fd) => {
       const { ok, data } = await CIQAuth.post("/api/auth/verify-email", { token: fd.get("token") });
