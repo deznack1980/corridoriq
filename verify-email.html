@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Verify email</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+  <link rel="stylesheet" href="auth-public.css" />
+</head>
+<body class="auth-page">
+  <div class="auth-shell">
+    <aside class="auth-side">
+      <a class="brand" href="/"><img src="assets/brand/corridoriq-mark.svg" alt="" /><div><div class="t">CorridorIQ</div></div></a>
+      <div class="pitch" style="margin:auto 0;max-width:460px">
+        <div class="k">Email verification</div>
+        <h2>Confirm the address you registered with.</h2>
+        <p>Verification unlocks protected features. You can still sign in and explore while a link is pending.</p>
+      </div>
+    </aside>
+    <main class="auth-main">
+      <div class="auth-card">
+        <h1>Verify your email</h1>
+        <p class="sub">Open the link from your inbox, or paste the token below.</p>
+        <form id="verifyForm" action="javascript:void(0)" method="post">
+          <div class="auth-field"><label for="token">Verification token</label>
+            <input id="token" name="token" autocomplete="one-time-code" required /></div>
+          <button class="btn btn-primary btn-block" type="submit">Verify email</button>
+        </form>
+        <div class="auth-msg" id="msg" role="status"></div>
+        <div class="auth-links">
+          <button class="btn" type="button" id="resendBtn">Resend verification</button>
+          <a href="login.html">Sign in</a>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="auth-public.js"></script>
+  <script>
+    const tokenField = document.getElementById("token");
+    const preset = CIQAuth.qs("token");
+    if (preset) tokenField.value = preset;
+    CIQAuth.bindForm(document.getElementById("verifyForm"), async (fd) => {
+      const { ok, data } = await CIQAuth.post("/api/auth/verify-email", { token: fd.get("token") });
+      if (!ok) {
+        CIQAuth.setMsg(document.getElementById("msg"), (data && data.error) || "This link is invalid or has expired.", "error");
+        return;
+      }
+      CIQAuth.setMsg(document.getElementById("msg"), "Email verified.", "ok");
+      setTimeout(() => CIQAuth.goLanding(data.user), 700);
+    });
+    document.getElementById("resendBtn").addEventListener("click", () => {
+      CIQAuth.resendVerification("", document.getElementById("msg"));
+    });
+    if (preset) document.getElementById("verifyForm").requestSubmit();
+  </script>
+</body>
+</html>

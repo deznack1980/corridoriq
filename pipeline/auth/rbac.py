@@ -46,6 +46,17 @@ PERMISSIONS: dict[str, str] = {
     "pipeline.monitor": "View detailed data-pipeline run status and errors",
     "pipeline.run": "Trigger the data pipeline / morning refresh manually",
     "admin.system": "Full system administration",
+    "contractor.explore": "Explore the contractor welcome workspace",
+    "contractor.profile.update": "Update non-sensitive contractor profile fields",
+    "contractor.rfq.submit": "Submit live contractor RFQs (email verification required)",
+    "contractor.intelligence.view": "View protected contractor intelligence (email verification required)",
+    "contractor.quotes.view": "View private supplier quotations (email verification required)",
+    "supplier.explore": "Explore the supplier welcome workspace",
+    "supplier.profile.update": "Update non-sensitive supplier profile fields",
+    "supplier.rfq.access": "Access live contractor RFQs (verification and approval required)",
+    "supplier.quote.submit": "Submit supplier quotations (verification and approval required)",
+    "supplier.contacts.view": "View contractor contact intelligence (verification and approval required)",
+    "supplier.commercial.view": "View supplier commercial data (verification and approval required)",
 }
 
 # System roles and their granted permissions.
@@ -75,6 +86,15 @@ _ESTIMATOR = {
     "projects.view_assigned", "permits.view",
     "crm.tasks.view", "crm.tasks.complete",
     "reports.view", "products.view", "products.quote",
+}
+_CONTRACTOR = {
+    "contractor.explore", "contractor.profile.update",
+    "contractor.rfq.submit", "contractor.intelligence.view", "contractor.quotes.view",
+}
+_SUPPLIER = {
+    "supplier.explore", "supplier.profile.update",
+    "supplier.rfq.access", "supplier.quote.submit",
+    "supplier.contacts.view", "supplier.commercial.view",
 }
 
 ROLES: dict[str, dict] = {
@@ -108,6 +128,16 @@ ROLES: dict[str, dict] = {
         "description": "Fulfillment tasks; no contractor intelligence.",
         "permissions": _FULFILLMENT,
     },
+    "contractor": {
+        "display_name": "Contractor",
+        "description": "Self-serve contractor network account.",
+        "permissions": _CONTRACTOR,
+    },
+    "supplier": {
+        "display_name": "Supplier",
+        "description": "Self-serve supply-house account pending verification and approval.",
+        "permissions": _SUPPLIER,
+    },
 }
 
 # Post-login landing pages — backend is the source of truth.
@@ -116,6 +146,8 @@ LANDING_MANAGER = "team-dashboard.html"
 LANDING_REP = "sales-dashboard.html"
 LANDING_ESTIMATOR = "estimator-work-queue.html"
 LANDING_READONLY = "readonly-dashboard.html"
+LANDING_CONTRACTOR = "contractor-welcome.html"
+LANDING_SUPPLIER = "supplier-welcome.html"
 
 
 def default_landing_page(roles: list[str] | None, permissions) -> str:
@@ -124,6 +156,10 @@ def default_landing_page(roles: list[str] | None, permissions) -> str:
     perms = set(permissions or [])
     if "admin" in role_set or "admin.system" in perms:
         return LANDING_ADMIN
+    if "contractor" in role_set or "contractor.explore" in perms:
+        return LANDING_CONTRACTOR
+    if "supplier" in role_set or "supplier.explore" in perms:
+        return LANDING_SUPPLIER
     if "sales_manager" in role_set or "companies.assign" in perms:
         return LANDING_MANAGER
     if "estimator" in role_set:
@@ -144,6 +180,10 @@ def dashboard_mode(roles: list[str] | None, permissions) -> str:
         return "estimator"
     if landing == LANDING_READONLY:
         return "read_only"
+    if landing == LANDING_CONTRACTOR:
+        return "contractor"
+    if landing == LANDING_SUPPLIER:
+        return "supplier"
     return "assignment"
 
 

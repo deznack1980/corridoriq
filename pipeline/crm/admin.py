@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from pipeline.auth.rbac import AuthzError, ROLES, require_permission
 from pipeline.auth.service import create_user as _create_user, write_audit
+from pipeline.auth.onboarding import approve_supplier, suspend_account
 from pipeline.crm import serializers
 from pipeline.crm.service import ValidationError
 
@@ -33,6 +34,8 @@ def list_users(conn: sqlite3.Connection, user: dict) -> list[dict]:
     for r in rows:
         d = serializers.serialize_user(r)
         d["roles"] = _roles_for(conn, r["id"])
+        kind = d.get("account_kind") or "employee"
+        d["email_verified"] = bool(d.get("email_verified_at")) or kind == "employee"
         out.append(d)
     return out
 
@@ -44,6 +47,8 @@ def create_user(conn: sqlite3.Connection, user: dict, data: dict, *, ip=None, ua
     for rn in roles:
         if rn not in ROLES:
             raise ValidationError(f"unknown role: {rn}")
+        if rn in ("contractor", "supplier"):
+            raise ValidationError("Contractor and supplier accounts are created through self-registration.")
     password = data.get("password")
     if not password:
         from pipeline.auth.passwords import generate_temp_password
@@ -113,14 +118,34 @@ def update_user(conn: sqlite3.Connection, user: dict, target_id: int, data: dict
     return out
 
 
+def approve_supplier_account(conn, user, target_id, *, ip=None, ua=None) -> dict:
+    ctx = approve_supplier(conn, user, target_id, ip=ip, ua=ua)
+    row = conn.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
+    out = serializers.serialize_user(row)
+    out["roles"] = _roles_for(conn, target_id)
+    out["email_verified"] = ctx.get("email_verified")
+    return out
+
+
+def suspend_user_account(conn, user, target_id, *, ip=None, ua=None) -> dict:
+    ctx = suspend_account(conn, user, target_id, ip=ip, ua=ua)
+    row = conn.execute("SELECT * FROM users WHERE id=?", (target_id,)).fetchone()
+    out = serializers.serialize_user(row)
+    out["roles"] = _roles_for(conn, target_id)
+    out["account_state"] = ctx.get("account_state")
+    return out
+
+
 def team_overview(conn: sqlite3.Connection, user: dict) -> list[dict]:
     require_permission(user, "users.view")
     org_id = user["organization_id"]
     from datetime import datetime, timezone
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    kind_filter = " AND (account_kind IS NULL OR account_kind='employee')" if "account_kind" in cols else ""
     rows = conn.execute(
-        "SELECT id, display_name, email FROM users WHERE organization_id=? AND is_active=1 "
-        "ORDER BY display_name", (org_id,)).fetchall()
+        "SELECT id, display_name, email FROM users WHERE organization_id=? AND is_active=1"
+        f"{kind_filter} ORDER BY display_name", (org_id,)).fetchall()
 
     def _n(sql, params):
         return conn.execute(sql, params).fetchone()["n"]

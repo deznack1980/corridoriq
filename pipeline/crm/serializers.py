@@ -74,6 +74,8 @@ _USER_PUBLIC_FIELDS = (
     "id", "organization_id", "email", "first_name", "last_name",
     "display_name", "phone", "is_active", "must_change_password",
     "last_login_at", "created_at",
+    "account_kind", "account_state", "email_verified_at",
+    "business_name", "business_category",
 )
 
 

@@ -2,10 +2,11 @@
 
     python -m pipeline.api.server
 
-Every /api route (except login) requires a valid session. Authorization,
-organization boundaries, and record-level company access are enforced in the
-backend service layer — never in the browser. Restricted fields are removed by
-serializers before responses leave the server.
+Every /api route (except documented public auth and preview routes) requires
+a valid session. Authorization, organization boundaries, and record-level
+company access are enforced in the backend service layer — never in the
+browser. Restricted fields are removed by serializers before responses leave
+the server.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from pipeline.auth.rbac import AuthzError
+from pipeline.auth import onboarding, rate_limit
 from pipeline.auth.service import (
     AuthError,
     change_password,
@@ -26,6 +28,7 @@ from pipeline.auth.service import (
     serialize_user_context,
     write_audit,
 )
+from pipeline.api.public_preview import public_preview
 from pipeline.config import settings
 from pipeline.crm import admin as crm_admin
 from pipeline.crm import service as crm
@@ -98,6 +101,8 @@ _SALES_COMPANY_RE = re.compile(
     rf"^/api/sales/companies/{_ID}(?:/(projects|permits|activities|relationship))?$")
 _SALES_TASK_RE = re.compile(rf"^/api/sales/tasks/{_ID}$")
 _ADMIN_USER_RE = re.compile(rf"^/api/admin/users/{_ID}$")
+_ADMIN_APPROVE_RE = re.compile(rf"^/api/admin/users/{_ID}/approve-supplier$")
+_ADMIN_SUSPEND_RE = re.compile(rf"^/api/admin/users/{_ID}/suspend$")
 
 
 def _factory():
@@ -350,6 +355,12 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _route_get(self, conn, path, query):
         if path == "/api/health":
             return self._json(200, {"ok": True, "service": "corridoriq-sales"})
+        if path in ("/api/public/preview", "/api/public/explore"):
+            return self._json(200, public_preview())
+        if path == "/api/auth/verify-email" and query.get("token"):
+            user = onboarding.verify_email(
+                conn, query.get("token"), ip=self._client()[0], ua=self._client()[1])
+            return self._json(200, {"ok": True, "user": serialize_user_context(user)})
         if path == "/api/auth/me":
             user = self._require_user(conn)
             if user is None:
@@ -361,6 +372,28 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         self._cur_user = user
         ip, ua = self._client()
+
+        if path == "/api/contractor/dashboard":
+            return self._json(200, onboarding.contractor_dashboard(user))
+        if path == "/api/supplier/dashboard":
+            return self._json(200, onboarding.supplier_dashboard(user))
+        if path == "/api/contractor/intelligence":
+            onboarding.deny_protected_contractor(user, "contractor.intelligence.view")
+            return self._json(200, {"items": [], "note": "No protected intelligence records are exposed on this route."})
+        if path == "/api/contractor/quotes":
+            onboarding.deny_protected_contractor(user, "contractor.quotes.view")
+            return self._json(200, {"items": [], "note": "No private quotations yet."})
+        if path == "/api/supplier/rfqs":
+            onboarding.deny_protected_supplier(user, "supplier.rfq.access")
+            return self._json(200, {"items": []})
+        if path == "/api/supplier/contacts":
+            onboarding.deny_protected_supplier(user, "supplier.contacts.view")
+            return self._json(200, {"items": []})
+        if path == "/api/supplier/commercial":
+            onboarding.deny_protected_supplier(user, "supplier.commercial.view")
+            return self._json(200, {"items": []})
+
+        onboarding.require_employee_workspace(user)
 
         if path == "/api/sales/dashboard":
             return self._json(200, crm.dashboard(conn, user))
@@ -438,11 +471,36 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _route_write(self, conn, method, path, body):
         ip, ua = self._client()
 
-        # --- auth (login is the only unauthenticated write) ---
+        # --- public auth (rate-limited; never creates administrators) ---
         if method == "POST" and path == "/api/auth/login":
+            rate_limit.check("login", ip)
             token, user = login(conn, body.get("email", ""), body.get("password", ""),
                                 ip_address=ip, user_agent=ua)
             return self._json(200, {"user": serialize_user_context(user)}, set_cookie=token)
+        if method == "POST" and path == "/api/auth/register/contractor":
+            rate_limit.check("register", ip)
+            token, user = onboarding.register_contractor(conn, body, ip=ip, ua=ua)
+            return self._json(201, {"user": serialize_user_context(user)}, set_cookie=token)
+        if method == "POST" and path == "/api/auth/register/supplier":
+            rate_limit.check("register", ip)
+            token, user = onboarding.register_supplier(conn, body, ip=ip, ua=ua)
+            return self._json(201, {"user": serialize_user_context(user)}, set_cookie=token)
+        if method == "POST" and path == "/api/auth/verify-email":
+            user = onboarding.verify_email(conn, body.get("token", ""), ip=ip, ua=ua)
+            return self._json(200, {"ok": True, "user": serialize_user_context(user)})
+        if method == "POST" and path == "/api/auth/resend-verification":
+            rate_limit.check("resend_verification", ip)
+            session_user = get_current_user(conn, self._token())
+            return self._json(200, onboarding.resend_verification(
+                conn, body.get("email", ""), user=session_user, ip=ip, ua=ua))
+        if method == "POST" and path == "/api/auth/forgot-password":
+            rate_limit.check("forgot_password", ip)
+            return self._json(200, onboarding.request_password_reset(
+                conn, body.get("email", ""), ip=ip, ua=ua))
+        if method == "POST" and path == "/api/auth/reset-password":
+            return self._json(200, onboarding.reset_password(
+                conn, body.get("token", ""), body.get("password") or body.get("new_password") or "",
+                ip=ip, ua=ua))
 
         user = self._require_user(conn)
         if user is None:
@@ -458,6 +516,25 @@ class ApiHandler(BaseHTTPRequestHandler):
                             body.get("new_password", ""), ip_address=ip, user_agent=ua)
             # Password change revokes sessions; force re-login.
             return self._json(200, {"ok": True}, clear_cookie=True)
+
+        if method == "PATCH" and path == "/api/contractor/profile":
+            onboarding.require_contractor(user)
+            updated = onboarding.update_self_profile(conn, user, body)
+            return self._json(200, {"user": serialize_user_context(updated)})
+        if method == "PATCH" and path == "/api/supplier/profile":
+            if (user.get("account_kind") != "supplier"
+                    and "supplier" not in (user.get("roles") or [])):
+                raise AuthzError("permission denied")
+            updated = onboarding.update_self_profile(conn, user, body)
+            return self._json(200, {"user": serialize_user_context(updated)})
+        if method == "POST" and path == "/api/contractor/rfq":
+            onboarding.deny_protected_contractor(user, "contractor.rfq.submit")
+            return self._json(201, {"ok": True, "status": "accepted"})
+        if method == "POST" and path == "/api/supplier/quotes":
+            onboarding.deny_protected_supplier(user, "supplier.quote.submit")
+            return self._json(201, {"ok": True, "status": "accepted"})
+
+        onboarding.require_employee_workspace(user)
 
         # --- sales ---
         m = _SALES_COMPANY_RE.match(path)
@@ -490,6 +567,14 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._json(202, {"ok": True, "message": "Morning refresh started."})
         if method == "POST" and path == "/api/admin/users":
             return self._json(201, crm_admin.create_user(conn, user, body, ip=ip, ua=ua))
+        m = _ADMIN_APPROVE_RE.match(path)
+        if m and method == "POST":
+            return self._json(200, crm_admin.approve_supplier_account(
+                conn, user, int(m.group(1)), ip=ip, ua=ua))
+        m = _ADMIN_SUSPEND_RE.match(path)
+        if m and method == "POST":
+            return self._json(200, crm_admin.suspend_user_account(
+                conn, user, int(m.group(1)), ip=ip, ua=ua))
         m = _ADMIN_USER_RE.match(path)
         if m and method == "PATCH":
             return self._json(200, crm_admin.update_user(conn, user, int(m.group(1)), body, ip=ip, ua=ua))

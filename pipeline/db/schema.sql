@@ -643,7 +643,8 @@ CREATE TABLE IF NOT EXISTS organizations (
     updated_at          TEXT NOT NULL
 );
 
--- users: individual employee accounts. password_hash is never serialized.
+-- users: individual accounts (employees, contractors, suppliers).
+-- password_hash is never serialized. Tokens are stored hashed in auth_tokens.
 CREATE TABLE IF NOT EXISTS users (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     organization_id     INTEGER NOT NULL REFERENCES organizations(id),
@@ -660,9 +661,16 @@ CREATE TABLE IF NOT EXISTS users (
     locked_until        TEXT,
     last_login_at       TEXT,
     created_at          TEXT NOT NULL,
-    updated_at          TEXT NOT NULL
+    updated_at          TEXT NOT NULL,
+    account_kind        TEXT NOT NULL DEFAULT 'employee',
+    account_state       TEXT NOT NULL DEFAULT 'ACTIVE',
+    email_verified_at   TEXT,
+    business_name       TEXT,
+    business_category   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id);
+CREATE INDEX IF NOT EXISTS idx_users_kind ON users(account_kind);
+CREATE INDEX IF NOT EXISTS idx_users_state ON users(account_state);
 
 -- roles / permissions / role_permissions / user_roles (RBAC).
 CREATE TABLE IF NOT EXISTS roles (
@@ -818,6 +826,19 @@ CREATE TABLE IF NOT EXISTS security_audit_log (
 CREATE INDEX IF NOT EXISTS idx_sec_audit_user ON security_audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_sec_audit_time ON security_audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sec_audit_event ON security_audit_log(event_type);
+
+-- auth_tokens: hashed, single-use email-verification and password-reset tokens.
+-- The raw token is emailed once and never stored.
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL REFERENCES users(id),
+    purpose             TEXT NOT NULL,
+    token_hash          TEXT NOT NULL UNIQUE,
+    expires_at          TEXT NOT NULL,
+    used_at             TEXT,
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id, purpose);
 
 -- ============================================================
 -- Sprint 6 — Multi-Supplier Product Pricing (V1)

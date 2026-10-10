@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Contractor Sign Up</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+  <link rel="stylesheet" href="auth-public.css" />
+</head>
+<body class="auth-page">
+  <div class="auth-shell">
+    <aside class="auth-side">
+      <a class="brand" href="/">
+        <img src="assets/brand/corridoriq-mark.svg" alt="" />
+        <div><div class="t">CorridorIQ</div></div>
+      </a>
+      <div class="pitch" style="margin:auto 0;max-width:460px">
+        <div class="k">Contractor network</div>
+        <h2>Create an account and start exploring in under a minute.</h2>
+        <p>Name, business, email, and password. You can tour the welcome dashboard immediately. Email verification unlocks live requests and protected information — not the first look.</p>
+      </div>
+    </aside>
+    <main class="auth-main">
+      <div class="auth-card">
+        <h1>Contractor sign up</h1>
+        <p class="sub">No administrator approval is required for a standard contractor account.</p>
+        <form id="registerForm" action="javascript:void(0)" method="post">
+          <div class="auth-field"><label for="name">Name</label>
+            <input id="name" name="name" autocomplete="name" required /></div>
+          <div class="auth-field"><label for="business_name">Business name</label>
+            <input id="business_name" name="business_name" autocomplete="organization" required /></div>
+          <div class="auth-field"><label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required /></div>
+          <div class="auth-field"><label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" />
+            <span class="hint">At least 8 characters.</span></div>
+          <button class="btn btn-primary btn-block" type="submit" id="registerBtn">Create contractor account</button>
+        </form>
+        <div class="auth-msg" id="msg" role="status"></div>
+        <div class="auth-links">
+          <a href="login.html">Already have an account? Sign in</a>
+          <a href="register-supplier.html">Supply house? Create a supplier account</a>
+          <a href="explore.html">Explore the platform first</a>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="auth-public.js"></script>
+  <script>
+    CIQAuth.bindForm(document.getElementById("registerForm"), async (fd) => {
+      const msg = document.getElementById("msg");
+      CIQAuth.setMsg(msg, "");
+      const { ok, data } = await CIQAuth.post("/api/auth/register/contractor", {
+        name: fd.get("name"),
+        business_name: fd.get("business_name"),
+        email: fd.get("email"),
+        password: fd.get("password"),
+      });
+      if (!ok) {
+        CIQAuth.setMsg(msg, (data && data.error) || "Could not create this account.", "error");
+        return;
+      }
+      CIQAuth.goLanding(data.user);
+    });
+  </script>
+</body>
+</html>

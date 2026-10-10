@@ -79,7 +79,7 @@
       <div class="auth-wrap">
         <div class="auth-card" id="loginCard">
           <h1>Sign in</h1>
-          <p class="sub">Access is limited to authorized users. Activity is audited.</p>
+          <p class="sub">Contractors, suppliers, and authorized staff use the same sign-in. Routing follows your verified role.</p>
           <div class="error-banner" id="expiredBanner" style="display:none">Your session expired. Please sign in again.</div>
           <div class="error-banner" id="originBanner" style="display:none">This page could not reach the CorridorIQ server. Open the sign-in page from the CorridorIQ site address (not a saved file or another server).</div>
           <form id="loginForm" action="javascript:void(0)" method="post" onsubmit="return false">
@@ -106,8 +106,12 @@
           </form>
           <div class="auth-msg" id="changeMsg"></div>
         </div>
-        <div class="auth-alt"><a href="/">&larr; CorridorIQ.pro</a><a href="for-suppliers.html#walkthrough">Need access?</a></div>
-        <div class="auth-note">Protected by session security and role-based access control.</div>
+        <div class="auth-alt" style="flex-wrap:wrap;gap:10px">
+          <a href="register-contractor.html">New contractor? Create Contractor Account</a>
+          <a href="register-supplier.html">Supply house? Create Supplier Account</a>
+        </div>
+        <div class="auth-alt"><a href="reset-password.html">Forgot password? Reset Password</a><a href="explore.html">Explore Platform</a></div>
+        <div class="auth-note">Protected by session security and role-based access control. Administrators are not created through self-registration.</div>
       </div>
     </main>
   </div>

@@ -13,11 +13,39 @@
         <td data-label="Name">${CIQ.esc(u.display_name || (u.first_name + " " + u.last_name))}</td>
         <td data-label="Email">${CIQ.esc(u.email)}</td>
         <td data-label="Roles">${(u.roles || []).map((r) => `<span class="badge slate">${CIQ.esc(CIQ.titleCase(r))}</span>`).join(" ")}</td>
-        <td data-label="Status">${u.is_active ? '<span class="badge green">Active</span>' : '<span class="badge red">Disabled</span>'}</td>
+        <td data-label="Status">${statusBadge(u)}</td>
         <td data-label="Last login">${u.last_login_at ? CIQ.relTime(u.last_login_at) : "Never"}</td>
-        ${canDisable() ? `<td data-label=""><button class="btn btn-sm" data-id="${u.id}">${u.is_active ? "Disable" : "Enable"}</button></td>` : ""}
+        ${canDisable() ? `<td data-label="">${actionButtons(u)}</td>` : ""}
       </tr>`).join("")}</tbody></table></div>`;
     el.querySelectorAll("button[data-id]").forEach((b) => b.addEventListener("click", () => toggle(Number(b.dataset.id), b)));
+    el.querySelectorAll("button[data-approve]").forEach((b) => b.addEventListener("click", () => approve(Number(b.dataset.approve), b)));
+  }
+
+  function statusBadge(u) {
+    const state = u.account_state || (u.is_active ? "ACTIVE" : "SUSPENDED");
+    const kind = u.account_kind && u.account_kind !== "employee" ? ` · ${CIQ.titleCase(u.account_kind)}` : "";
+    const cls = state === "ACTIVE" && u.is_active ? "green" : state === "SUSPENDED" || !u.is_active ? "red" : "amber";
+    return `<span class="badge ${cls}">${CIQ.esc(state)}${kind}</span>`;
+  }
+
+  function actionButtons(u) {
+    const bits = [`<button class="btn btn-sm" data-id="${u.id}">${u.is_active ? "Disable" : "Enable"}</button>`];
+    if (u.account_kind === "supplier" && u.account_state === "PENDING_SUPPLIER_APPROVAL" && CIQ.hasPerm("users.update")) {
+      bits.unshift(`<button class="btn btn-sm btn-primary" data-approve="${u.id}">Approve supplier</button>`);
+    }
+    return bits.join(" ");
+  }
+
+  async function approve(id, btn) {
+    if (!(await CIQ.confirm(`Approve supplier access for this account? Live RFQs and contacts will unlock.`, { confirmLabel: "Approve" }))) return;
+    await CIQ.busy(btn, async () => {
+      try {
+        const updated = await CIQ.api.post(`/api/admin/users/${id}/approve-supplier`, {});
+        const idx = users.findIndex((x) => x.id === id);
+        if (idx >= 0) Object.assign(users[idx], updated);
+        CIQ.toast("Supplier approved", "success"); render();
+      } catch (e) { CIQ.toast(e.message, "error"); }
+    });
   }
 
   async function toggle(id, btn) {

@@ -463,7 +463,10 @@ def test_preview_flow_sends_nothing_and_writes_nothing(browser, site):
 # 7. Public pages make no coverage / freshness / procurement overclaims
 # ---------------------------------------------------------------------------
 
-PUBLIC_PAGES = ("home.html", "for-suppliers.html", "for-contractors.html", "login.html")
+PUBLIC_PAGES = (
+    "home.html", "for-suppliers.html", "for-contractors.html", "login.html",
+    "explore.html", "register-contractor.html", "register-supplier.html",
+)
 
 _OVERCLAIMS = {
     "real-time data": r"real[- ]?time",

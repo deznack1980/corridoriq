@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorIQ — Supplier welcome</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+  <link rel="stylesheet" href="site.css" />
+  <link rel="stylesheet" href="auth-public.css" />
+</head>
+<body class="site">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="site-brand" href="supplier-welcome.html" aria-label="Supplier home">
+        <img src="assets/brand/corridoriq-mark.svg" alt="" />
+        <div><div class="t">CorridorIQ</div><div class="s" id="bizSub">Supplier workspace</div></div>
+      </a>
+      <nav class="site-links" aria-label="Primary">
+        <a class="on" href="supplier-welcome.html">Welcome</a>
+        <a href="explore.html">Explore Platform</a>
+        <a href="for-suppliers.html">How it works</a>
+      </nav>
+      <div class="site-cta">
+        <button class="btn btn-ghost" type="button" id="signOut">Sign out</button>
+      </div>
+      <button class="site-burger" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+    </div>
+  </header>
+  <main class="welcome">
+    <h1 id="hello">Welcome</h1>
+    <p class="lede" id="stateLine" style="max-width:680px">Supplier accounts stay separate from contractor accounts. Live procurement access requires email verification and administrative approval.</p>
+    <div id="verifyBanner" class="verify-banner" hidden>
+      <strong id="gateTitle">Email verification required to activate this feature.</strong>
+      <div id="gateBody"></div>
+      <div class="row">
+        <button class="btn btn-primary" type="button" id="resendBtn">Resend verification</button>
+      </div>
+      <div class="auth-msg" id="verifyMsg"></div>
+    </div>
+    <div class="welcome-grid">
+      <div class="feature-card">
+        <div class="kicker">Permitted now</div>
+        <h3>Preview the supplier workspace</h3>
+        <p>Learn how CorridorIQ turns public permit records into a short, checked account list — without seeing live contractor RFQs or private contacts.</p>
+        <div class="row" style="margin-top:16px">
+          <a class="btn btn-primary" href="explore.html">View public demonstration</a>
+          <a class="btn" href="for-suppliers.html">Supplier guide</a>
+        </div>
+      </div>
+      <div id="locked"></div>
+    </div>
+  </main>
+  <script src="site.js"></script>
+  <script src="auth-public.js"></script>
+  <script src="supplier-welcome.js"></script>
+</body>
+</html>

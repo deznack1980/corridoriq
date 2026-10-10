@@ -237,6 +237,22 @@ AUTH_MAX_FAILED_LOGINS = 5
 AUTH_LOCKOUT_MINUTES = 15
 # Secure cookies + HTTPS assumptions only in production.
 AUTH_PRODUCTION = _os.environ.get("CORRIDORIQ_ENV", "").lower() == "production"
+
+# Public onboarding — verification, reset, and abuse controls.
+# Tokens are stored hashed. TTL values are hours unless noted.
+EMAIL_VERIFY_TTL_HOURS = int(_os.environ.get("CORRIDORIQ_VERIFY_TTL_HOURS", "24"))
+PASSWORD_RESET_TTL_HOURS = int(_os.environ.get("CORRIDORIQ_RESET_TTL_HOURS", "1"))
+AUTH_REGISTER_PER_HOUR = int(_os.environ.get("CORRIDORIQ_REGISTER_PER_HOUR", "8"))
+AUTH_RESET_PER_HOUR = int(_os.environ.get("CORRIDORIQ_RESET_PER_HOUR", "5"))
+AUTH_RESEND_PER_HOUR = int(_os.environ.get("CORRIDORIQ_RESEND_PER_HOUR", "5"))
+AUTH_LOGIN_PER_MINUTE = int(_os.environ.get("CORRIDORIQ_LOGIN_PER_MINUTE", "120"))
+PUBLIC_APP_URL = _os.environ.get("CORRIDORIQ_PUBLIC_URL", "http://127.0.0.1:8780").rstrip("/")
+MAIL_OUTBOX_DIR = _os.environ.get("CORRIDORIQ_MAIL_OUTBOX") or str(DATA_DIR / "mail-outbox")
+SMTP_HOST = _os.environ.get("CORRIDORIQ_SMTP_HOST", "").strip()
+SMTP_PORT = int(_os.environ.get("CORRIDORIQ_SMTP_PORT", "587"))
+SMTP_USER = _os.environ.get("CORRIDORIQ_SMTP_USER", "").strip()
+SMTP_PASSWORD = _os.environ.get("CORRIDORIQ_SMTP_PASSWORD", "").strip()
+SMTP_FROM = _os.environ.get("CORRIDORIQ_SMTP_FROM", "CorridorIQ <noreply@corridoriq.pro>").strip()
 CRM_PAGE_SIZE_DEFAULT = 50
 CRM_PAGE_SIZE_MAX = 200
 

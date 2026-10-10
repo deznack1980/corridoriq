@@ -169,6 +169,12 @@ _KNOWLEDGE_V21_COLUMNS = [
     ("company_capability_evidence", "attribution_role", "TEXT"),
     ("company_capability_evidence", "attribution_confidence", "REAL"),
     ("company_capability_evidence", "evidence_directness", "TEXT"),
+    # Public onboarding — additive account fields on existing users tables.
+    ("users", "account_kind", "TEXT NOT NULL DEFAULT 'employee'"),
+    ("users", "account_state", "TEXT NOT NULL DEFAULT 'ACTIVE'"),
+    ("users", "email_verified_at", "TEXT"),
+    ("users", "business_name", "TEXT"),
+    ("users", "business_category", "TEXT"),
 ]
 
 

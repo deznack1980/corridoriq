@@ -64,6 +64,13 @@ def write_audit(conn: sqlite3.Connection, *, event_type: str,
     conn.commit()
 
 
+def _row_get(row, key, default=None):
+    try:
+        return row[key]
+    except (IndexError, KeyError, TypeError):
+        return default
+
+
 def build_user_context(conn: sqlite3.Connection, user_row) -> dict:
     from pipeline.auth.rbac import dashboard_mode, default_landing_page
 
@@ -73,6 +80,10 @@ def build_user_context(conn: sqlite3.Connection, user_row) -> dict:
         "SELECT id, name, slug FROM organizations WHERE id=?",
         (user_row["organization_id"],),
     ).fetchone()
+    kind = _row_get(user_row, "account_kind") or "employee"
+    state = _row_get(user_row, "account_state") or "ACTIVE"
+    verified_at = _row_get(user_row, "email_verified_at")
+    email_verified = bool(verified_at) or kind == "employee"
     return {
         "id": user_row["id"],
         "organization_id": user_row["organization_id"],
@@ -85,12 +96,19 @@ def build_user_context(conn: sqlite3.Connection, user_row) -> dict:
         "display_name": user_row["display_name"] or user_row["email"],
         "first_name": user_row["first_name"],
         "last_name": user_row["last_name"],
+        "phone": _row_get(user_row, "phone"),
         "must_change_password": bool(user_row["must_change_password"]),
         "is_active": bool(user_row["is_active"]),
         "roles": roles,
         "permissions": permissions,
         "default_landing_page": default_landing_page(roles, permissions),
         "dashboard_mode": dashboard_mode(roles, permissions),
+        "account_kind": kind,
+        "account_state": state,
+        "email_verified": email_verified,
+        "email_verified_at": verified_at,
+        "business_name": _row_get(user_row, "business_name"),
+        "business_category": _row_get(user_row, "business_category"),
     }
 
 
@@ -228,8 +246,15 @@ def create_user(conn: sqlite3.Connection, *, organization_id: int, email: str,
                 display_name: str | None = None, phone: str | None = None,
                 role_names: list[str] | None = None,
                 must_change_password: bool = True,
-                created_by: int | None = None) -> int:
+                created_by: int | None = None,
+                account_kind: str = "employee",
+                account_state: str = "ACTIVE",
+                email_verified: bool | None = None,
+                business_name: str | None = None,
+                business_category: str | None = None) -> int:
     """Create a user with a hashed password and role assignments."""
+    if role_names and "admin" in role_names and created_by is None and account_kind != "employee":
+        raise ValueError("Administrator accounts cannot be self-registered.")
     norm = normalize_email(email)
     if not norm or "@" not in norm:
         raise ValueError("A valid email is required.")
@@ -238,12 +263,33 @@ def create_user(conn: sqlite3.Connection, *, organization_id: int, email: str,
     now = _iso(_now())
     pw_hash = passwords.hash_password(password)
     display = display_name or (f"{first_name} {last_name}".strip() or email)
+    if email_verified is None:
+        email_verified = account_kind == "employee"
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    fields = [
+        "organization_id", "email", "normalized_email", "password_hash",
+        "first_name", "last_name", "display_name", "phone", "is_active",
+        "must_change_password", "failed_login_count", "created_at", "updated_at",
+    ]
+    values = [
+        organization_id, email.strip(), norm, pw_hash, first_name, last_name,
+        display, phone, 1, 1 if must_change_password else 0, 0, now, now,
+    ]
+    extras = {
+        "account_kind": account_kind,
+        "account_state": account_state,
+        "email_verified_at": now if email_verified else None,
+        "business_name": business_name,
+        "business_category": business_category,
+    }
+    for key, val in extras.items():
+        if key in cols:
+            fields.append(key)
+            values.append(val)
+    placeholders = ",".join("?" * len(fields))
     cur = conn.execute(
-        "INSERT INTO users (organization_id, email, normalized_email, password_hash, "
-        "first_name, last_name, display_name, phone, is_active, must_change_password, "
-        "failed_login_count, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,0,?,?)",
-        (organization_id, email.strip(), norm, pw_hash, first_name, last_name,
-         display, phone, 1 if must_change_password else 0, now, now),
+        f"INSERT INTO users ({', '.join(fields)}) VALUES ({placeholders})",
+        values,
     )
     user_id = cur.lastrowid
     for rname in (role_names or []):
