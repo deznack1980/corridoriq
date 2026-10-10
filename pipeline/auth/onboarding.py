@@ -442,12 +442,38 @@ def contractor_dashboard(user: dict) -> dict:
         "business_name": user.get("business_name"),
         "display_name": user.get("display_name"),
         "verification_message": None if verified else VERIFY_REQUIRED,
+        "value": (
+            "Build a material list, send it only to the supplier you choose, "
+            "and compare their response in one place."
+        ),
         "allowed": [
             "welcome_dashboard",
             "onboarding_profile",
             "public_demonstrations",
             "platform_education",
         ],
+        "available_now": [
+            {"title": "Welcome workspace", "detail": "Signed in. Your contractor account is ready."},
+            {"title": "Business profile", "detail": "Name and company — no live request is sent."},
+            {"title": "Workflow demonstration", "detail": "See how a bill of materials becomes a supplier response."},
+        ],
+        "workflow_demo": {
+            "label": "Demonstration — not a live request",
+            "project": "Sample medical-office tenant improvement · Phoenix, AZ",
+            "bom": [
+                {"line": 1, "description": "PEX-A tubing 3/4 in coil", "qty": "4", "unit": "coil"},
+                {"line": 2, "description": "Lead-free ball valve 3/4 in", "qty": "18", "unit": "each"},
+                {"line": 3, "description": "Commercial electric water heater 50 gal", "qty": "2", "unit": "each"},
+            ],
+            "suppliers": [
+                {"name": "Sample Supply House A", "status": "Quoted", "availability": "In stock", "lead": "2 days"},
+                {"name": "Sample Supply House B", "status": "Quoted", "availability": "Partial", "lead": "5 days"},
+            ],
+            "note": (
+                "These lines and responses are synthetic. Live RFQs and private "
+                "quotations stay locked until you verify your email. No order is placed here."
+            ),
+        },
         "locked": [
             {"key": "live_rfq", "permission": "contractor.rfq.submit",
              "message": VERIFY_REQUIRED},
@@ -477,6 +503,15 @@ def supplier_dashboard(user: dict) -> dict:
             "public_demonstrations",
             "platform_education",
             "onboarding_profile",
+        ],
+        "available_now": [
+            {"title": "Supplier welcome workspace", "detail": "Signed in. Live contractor data is not shown yet."},
+            {"title": "Platform demonstration", "detail": "See how a contractor request would reach only your branch."},
+        ],
+        "onboarding_path": [
+            {"state": "PENDING_EMAIL_VERIFICATION", "detail": "Confirm the business email."},
+            {"state": "PENDING_SUPPLIER_APPROVAL", "detail": "An administrator reviews the account. Approval is never automatic."},
+            {"state": "ACTIVE", "detail": "Live RFQs, quoting, and contractor contacts unlock."},
         ],
         "locked": [] if live else [
             {"key": "live_rfqs", "permission": "supplier.rfq.access",

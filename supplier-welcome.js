@@ -46,6 +46,11 @@
       contractor_contacts: "Contractor contacts",
       commercial_data: "Commercial data",
     };
+    const current = d.account_state || "";
+    document.getElementById("path").innerHTML = (d.onboarding_path || []).map((step) =>
+      `<li><div><h4>${esc(step.state)}${step.state === current ? " — current" : ""}</h4><p>${esc(step.detail)}</p></div></li>`
+    ).join("");
+
     document.getElementById("locked").innerHTML = (d.locked || []).map((item) =>
       `<div class="lock-card" style="margin-bottom:12px">
         <div class="lock">Locked</div>

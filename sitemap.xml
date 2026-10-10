@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://corridoriq.pro/</loc>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
+    <loc>https://corridoriq.pro/explore.html</loc>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
+    <loc>https://corridoriq.pro/for-contractors.html</loc>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
+    <loc>https://corridoriq.pro/for-suppliers.html</loc>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
+    <loc>https://corridoriq.pro/register-contractor.html</loc>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
+    <loc>https://corridoriq.pro/register-supplier.html</loc>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
+    <loc>https://corridoriq.pro/login.html</loc>
+    <changefreq>weekly</changefreq>
+  </url>
+</urlset>

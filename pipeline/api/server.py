@@ -29,6 +29,8 @@ from pipeline.auth.service import (
     write_audit,
 )
 from pipeline.api.public_preview import public_preview
+from pipeline.api import seo
+from pipeline.auth import mailer
 from pipeline.config import settings
 from pipeline.crm import admin as crm_admin
 from pipeline.crm import service as crm
@@ -48,6 +50,10 @@ COOKIE = settings.SESSION_COOKIE_NAME
 
 # Portal files served same-origin (allowlist by extension + known names).
 _STATIC_SUFFIXES = (".html", ".js", ".css")
+_PUBLIC_ROOT_TYPES = {
+    "robots.txt": "text/plain; charset=utf-8",
+    "sitemap.xml": "application/xml; charset=utf-8",
+}
 
 # Public site entry point ("/" and the old "/index.html").
 _HOME_PAGE = "home.html"
@@ -130,10 +136,13 @@ def static_target(path: str):
     if len(parts) == 1:
         if name in _LEGACY_UNSERVED:
             return None, None
-        if name not in _PORTAL_PAGES and suffix not in _STATIC_SUFFIXES:
+        if name in _PUBLIC_ROOT_TYPES:
+            ctype = _PUBLIC_ROOT_TYPES[name]
+        elif name not in _PORTAL_PAGES and suffix not in _STATIC_SUFFIXES:
             return None, None
-        ctype = ("text/html; charset=utf-8" if suffix == ".html"
-                 else "application/javascript" if suffix == ".js" else "text/css")
+        else:
+            ctype = ("text/html; charset=utf-8" if suffix == ".html"
+                     else "application/javascript" if suffix == ".js" else "text/css")
     else:
         allowed = _SUBDIR_RULES.get(parts[0])
         if not allowed or suffix not in allowed:
@@ -292,10 +301,24 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
         return True
 
+    def _text(self, body: str, ctype: str, code: int = 200):
+        data = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(data)
+
     # ---- dispatch ---------------------------------------------------------
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path == "/robots.txt":
+            return self._text(seo.robots_txt(), "text/plain; charset=utf-8")
+        if path == "/sitemap.xml":
+            return self._text(seo.sitemap_xml(), "application/xml; charset=utf-8")
         if not path.startswith("/api/"):
             # Supplier referral links (/join/<code>) open the contractor join
             # page; the page reads the code from the URL.
@@ -354,7 +377,15 @@ class ApiHandler(BaseHTTPRequestHandler):
     # ---- GET routes -------------------------------------------------------
     def _route_get(self, conn, path, query):
         if path == "/api/health":
-            return self._json(200, {"ok": True, "service": "corridoriq-sales"})
+            mail = mailer.diagnose()
+            return self._json(200, {
+                "ok": True,
+                "service": "corridoriq-sales",
+                "mail": {
+                    "configured": mail["smtp_configured"],
+                    "delivery_mode": mail["delivery_mode"],
+                },
+            })
         if path in ("/api/public/preview", "/api/public/explore"):
             return self._json(200, public_preview())
         if path == "/api/auth/verify-email" and query.get("token"):
@@ -399,6 +430,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._json(200, crm.dashboard(conn, user))
         if path == "/api/admin/dashboard":
             return self._json(200, crm_admin.admin_dashboard(conn, user))
+        if path == "/api/admin/mail-status":
+            from pipeline.auth.rbac import require_permission
+            require_permission(user, "admin.system")
+            return self._json(200, mailer.diagnose())
         if path == "/api/estimator/work-queue":
             return self._json(200, crm_admin.estimator_work_queue(conn, user))
         if path == "/api/sales/companies":

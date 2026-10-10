@@ -183,6 +183,8 @@ def test_sample_prices_live_only_in_sample_file():
     ("/assets/brand/favicon.svg", "favicon.svg"),
     ("/assets/vendor/leaflet-1.9.4/leaflet.js", "leaflet.js"),
     ("/demo/rfq-sample-data.js", "rfq-sample-data.js"),
+    ("/robots.txt", "robots.txt"),
+    ("/sitemap.xml", "sitemap.xml"),
 ])
 def test_static_allowed(path, expect):
     target, ctype = static_target(path)

@@ -29,8 +29,9 @@
     </div>
   </header>
   <main class="welcome">
+    <div class="kicker">Supply house onboarding</div>
     <h1 id="hello">Welcome</h1>
-    <p class="lede" id="stateLine" style="max-width:680px">Supplier accounts stay separate from contractor accounts. Live procurement access requires email verification and administrative approval.</p>
+    <p class="lede" id="stateLine" style="max-width:680px">See how contractor demand reaches your branch. Live RFQs, contractor contacts, and quoting stay locked until email verification and administrative approval.</p>
     <div id="verifyBanner" class="verify-banner" hidden>
       <strong id="gateTitle">Email verification required to activate this feature.</strong>
       <div id="gateBody"></div>
@@ -39,11 +40,17 @@
       </div>
       <div class="auth-msg" id="verifyMsg"></div>
     </div>
+    <ol class="steps-v" id="path" style="margin:0 0 22px"></ol>
     <div class="welcome-grid">
       <div class="feature-card">
-        <div class="kicker">Permitted now</div>
-        <h3>Preview the supplier workspace</h3>
-        <p>Learn how CorridorIQ turns public permit records into a short, checked account list — without seeing live contractor RFQs or private contacts.</p>
+        <span class="state-pill demo">Demonstration</span>
+        <h3>How a contractor request would arrive</h3>
+        <p>A contractor sends a material list only to the supplier they choose. Your branch would see that request here after approval — not before.</p>
+        <ul class="ticks" style="margin-top:12px">
+          <li><div>Permit-backed demand context, when the source supports it</div></li>
+          <li><div>The list they sent you — not another supplier's quote</div></li>
+          <li><div>Your own availability and lead time, from your system</div></li>
+        </ul>
         <div class="row" style="margin-top:16px">
           <a class="btn btn-primary" href="explore.html">View public demonstration</a>
           <a class="btn" href="for-suppliers.html">Supplier guide</a>

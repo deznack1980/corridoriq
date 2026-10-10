@@ -29,8 +29,9 @@
     </div>
   </header>
   <main class="welcome">
+    <div class="kicker green">Contractor workspace</div>
     <h1 id="hello">Welcome</h1>
-    <p class="lede" id="lede" style="max-width:640px">Your contractor workspace is ready. Explore the platform now. Verify your email when you want live requests and protected information.</p>
+    <p class="lede" id="lede" style="max-width:680px">Source materials without changing how you work. Build a list, send it only to the supplier you choose, and compare their response here.</p>
     <div id="verifyBanner" class="verify-banner" hidden>
       <strong>Email verification required to activate this feature.</strong>
       <div>You can stay signed in and keep exploring. Live RFQs, private quotations, and protected intelligence stay locked until you confirm your email.</div>
@@ -40,12 +41,19 @@
       </div>
       <div class="auth-msg" id="verifyMsg"></div>
     </div>
+
+    <div class="status-row" aria-label="What is ready">
+      <div class="feature-card"><span class="state-pill now">Available now</span><h3>Explore and prepare</h3><p>Your account, profile, and the demonstration below. Nothing here places an order.</p></div>
+      <div class="feature-card"><span class="state-pill demo">Demonstration</span><h3>Bill of materials to quote</h3><p>Sample lines and sample supplier responses. Not live customer or pricing data.</p></div>
+      <div class="feature-card"><span class="state-pill lock">Locked</span><h3>Live procurement</h3><p>Submitting a real RFQ and viewing private quotations wait on email verification.</p></div>
+    </div>
+
     <div class="welcome-grid">
       <div>
         <div class="feature-card" style="margin-bottom:16px">
-          <div class="kicker green">Permitted now</div>
-          <h3>Onboarding and exploration</h3>
-          <p>Prepare your profile, review the contractor workflow, and open the public demonstration. Nothing here submits a live request.</p>
+          <div class="kicker green">Available now</div>
+          <h3>Your business profile</h3>
+          <p>Optional details we can use later. Saving this does not notify a supplier.</p>
           <form id="profileForm" style="margin-top:14px">
             <div class="auth-field"><label for="pfName">Name</label><input id="pfName" name="name" /></div>
             <div class="auth-field"><label for="pfBiz">Business name</label><input id="pfBiz" name="business_name" /></div>
@@ -53,21 +61,42 @@
             <div class="auth-msg" id="profileMsg"></div>
           </form>
         </div>
-        <div class="feature-card">
-          <div class="kicker">Learn the workflow</div>
-          <h3>From material list to supplier response</h3>
+        <div class="feature-card" id="workflowCard">
+          <div class="kicker">Demonstration — not a live request</div>
+          <h3>How a material list becomes a supplier quotation</h3>
+          <p id="demoProject">Sample job shown for training only.</p>
           <ol class="steps-v" style="margin-top:12px">
-            <li><div><h4>Build a list</h4><p>Upload a spreadsheet or enter lines by hand.</p></div></li>
-            <li><div><h4>Choose a supplier</h4><p>A request goes only where you send it.</p></div></li>
-            <li><div><h4>Compare responses</h4><p>Price, availability, and lead time — after verification.</p></div></li>
+            <li><div><h4>1. Build a bill of materials</h4><p>Upload a spreadsheet or enter lines. Available later as a working tool; shown here as a sample.</p></div></li>
+            <li><div><h4>2. Send it to the supplier you choose</h4><p>A request is not broadcast. Only the houses you pick receive it.</p></div></li>
+            <li><div><h4>3. Compare responses</h4><p>Availability and lead time side by side. Live private quotations stay locked until verification.</p></div></li>
           </ol>
-          <div class="row" style="margin-top:16px">
-            <a class="btn btn-positive" href="explore.html">View public demonstration</a>
+          <div class="table-wrap" style="margin-top:16px">
+            <table class="preview-table" id="bomTable">
+              <thead><tr><th>Line</th><th>Sample material</th><th>Qty</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="table-wrap" style="margin-top:12px">
+            <table class="preview-table" id="quoteTable">
+              <thead><tr><th>Sample supplier</th><th>Status</th><th>Availability</th><th>Lead time</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="preview-note" id="demoNote">Demonstration data. No live RFQ is submitted from this page.</p>
+        </div>
+      </div>
+      <div>
+        <div id="locked"></div>
+        <div class="feature-card" style="margin-top:12px">
+          <div class="kicker">Learn more</div>
+          <h3>Public walkthrough</h3>
+          <p>The public site uses the same demonstration rules — no private contacts or supplier pricing.</p>
+          <div class="row" style="margin-top:12px">
+            <a class="btn btn-positive" href="explore.html">Explore Platform</a>
             <a class="btn" href="for-contractors.html">Contractor guide</a>
           </div>
         </div>
       </div>
-      <div id="locked"></div>
     </div>
   </main>
   <script src="site.js"></script>
