@@ -1,15 +1,15 @@
 /* Shared public auth + welcome-dashboard styles. Mobile-first tap targets. */
-.auth-page { min-height: 100vh; background: var(--navy-950, #07101c); }
+.auth-page { min-height: 100vh; background: var(--navy-950, #0a0e1a); }
 .auth-shell { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(380px, .95fr); min-height: 100vh; }
 .auth-side {
-  color: #d5deec; padding: 36px 48px; display: flex; flex-direction: column;
+  color: var(--on-dark, #e8eaf0); padding: 36px 48px; display: flex; flex-direction: column;
   background:
-    radial-gradient(900px 500px at 80% 10%, rgba(33,96,212,.32), transparent 60%),
-    linear-gradient(180deg, #102033, #07101c);
+    radial-gradient(900px 500px at 80% 10%, rgba(201,164,76,.28), transparent 60%),
+    linear-gradient(180deg, var(--navy-900, #0e1116), var(--navy-950, #0a0e1a));
 }
 .auth-side .brand { display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none; }
 .auth-side .brand img { width: 34px; height: 34px; }
-.auth-side .k { font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; color: #8db3f5; }
+.auth-side .k { font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; color: var(--accent-on-dark, #e2c179); }
 .auth-side h2 { color: #fff; font-size: 34px; line-height: 1.12; letter-spacing: -0.03em; margin: 14px 0 12px; }
 .auth-side p { color: #b0bdd2; line-height: 1.55; margin: 0; }
 .auth-main { background: #f4f6f9; display: grid; place-items: center; padding: 28px 20px; }
@@ -30,7 +30,7 @@
 .auth-msg.error { color: #b42318; }
 .auth-msg.ok { color: #147a4a; }
 .auth-links { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; font-size: 13.5px; }
-.auth-links a { color: #1d4fbf; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.auth-links a { color: var(--gold-strong, #b8912f); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 .btn-block { width: 100%; min-height: 46px; justify-content: center; }
 .verify-banner {
   border: 1px solid #f0c36e; background: #fff8e8; color: #6a4b00;
@@ -55,7 +55,7 @@
   text-transform: uppercase; border-radius: 999px; padding: 4px 10px; margin-bottom: 8px;
 }
 .state-pill.now { background: #e8f7ee; color: #147a4a; }
-.state-pill.demo { background: #eef3fb; color: #1d4fbf; }
+.state-pill.demo { background: var(--gold-soft, rgba(201,164,76,.14)); color: var(--gold-strong, #b8912f); }
 .state-pill.lock { background: #fff4d6; color: #8a5a00; }
 .steps-v { list-style: none; padding: 0; margin: 0; }
 .steps-v li { display: flex; gap: 10px; margin: 0 0 12px; }

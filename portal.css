@@ -1,9 +1,9 @@
 /* ==========================================================================
-   CorridorIQ — portal design system (Option B, Premium Enterprise)
-   Midnight-navy navigation and hero surfaces, light content surfaces,
-   controlled Corridor blue for action, controlled signal green for
-   positive / actionable states. Gold is retired; the legacy --gold* names
-   are kept as aliases so page-level styles keep working.
+   CorridorIQ — portal design system
+   Charcoal navigation and hero surfaces, light content surfaces,
+   approved amber-gold for brand action, signal green for positive states.
+   Informational blue (--blue) is semantic only — never the primary brand.
+   Token source of truth: this :root block. See docs/design/brand_palette.md.
    ========================================================================== */
 @font-face {
   font-family: "Inter";
@@ -14,20 +14,44 @@
 }
 
 :root {
-  /* Midnight navy */
-  --navy-950: #070f1c;
-  --navy-900: #0b1729;
-  --navy-800: #112139;
-  --navy-700: #1a2f4e;
-  --navy-600: #284469;
+  /* Approved brand (recovered from d0b9278 / style.css — do not invent new hex) */
+  --gold: #c9a44c;
+  --gold-strong: #b8912f;
+  --gold-light: #e2c179;
+  --gold-soft: rgba(201, 164, 76, 0.14);
+  --gold-dim: rgba(201, 164, 76, 0.15);
+  --gold-border: rgba(201, 164, 76, 0.35);
+  --ink: #0e1116;
+  --ink-2: #171b22;
+  --ink-3: #212632;
+  --charcoal: #1a1d27;
+  --charcoal-light: #232733;
+
+  /* Charcoal / near-black surfaces (navy-* names kept for existing selectors) */
+  --navy-950: #0a0e1a;
+  --navy-900: #0e1116;
+  --navy-800: #171b22;
+  --navy-700: #212632;
+  --navy-600: #1a1d27;
   --navy-line: rgba(255, 255, 255, 0.08);
 
-  /* Corridor blue (action) */
-  --accent: #2160d4;
-  --accent-strong: #1a4eb0;
-  --accent-soft: #ebf1fc;
-  --accent-line: #c9daf6;
-  --accent-on-dark: #8db3f5;
+  /* Primary brand action = approved gold */
+  --accent: #c9a44c;
+  --accent-strong: #b8912f;
+  --accent-soft: rgba(201, 164, 76, 0.14);
+  --accent-line: rgba(201, 164, 76, 0.35);
+  --accent-on-dark: #e2c179;
+
+  /* Canonical aliases for new work */
+  --ci-background: #0a0e1a;
+  --ci-surface: #171b22;
+  --ci-primary: #c9a44c;
+  --ci-primary-hover: #e2c179;
+  --ci-accent: #b8912f;
+  --ci-text: #e8eaf0;
+  --ci-text-muted: #9aa2b2;
+  --ci-border: rgba(201, 164, 76, 0.35);
+  --ci-focus: #c9a44c;
 
   /* Signal green (positive / actionable) */
   --signal: #13855a;
@@ -35,36 +59,28 @@
   --signal-soft: #e5f4ed;
   --signal-on-dark: #5fd3a0;
 
-  /* Legacy aliases (pages still reference these) */
-  --gold: var(--accent);
-  --gold-strong: var(--accent-strong);
-  --gold-soft: var(--accent-soft);
-  --ink: var(--navy-900);
-  --ink-2: var(--navy-800);
-  --ink-3: var(--navy-700);
-
   /* Content surfaces (light) */
-  --bg: #f3f5f8;
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #f7f9fb;
+  --surface-2: #f8f9fb;
   --surface-3: #eef2f6;
-  --border: #e1e6ed;
-  --border-strong: #c9d1dc;
+  --border: #e3e6ec;
+  --border-strong: #cdd2db;
 
   /* Text */
-  --text: #0f1b2d;
-  --text-2: #4a5568;
-  --text-3: #738096;
-  --on-dark: #e9eef6;
-  --on-dark-dim: #93a1b8;
+  --text: #1b2130;
+  --text-2: #545c6b;
+  --text-3: #7c8494;
+  --on-dark: #e8eaf0;
+  --on-dark-dim: #9aa2b2;
 
-  /* Status palette (restrained) */
+  /* Status palette (restrained). --blue is informational only. */
   --green: var(--signal);  --green-bg: var(--signal-soft);
-  --amber: #a86a0c;        --amber-bg: #fcf3e2;
-  --red: #c2413a;          --red-bg: #fcebe9;
-  --blue: var(--accent);   --blue-bg: var(--accent-soft);
-  --slate: #5a6880;        --slate-bg: #eef1f5;
-  --purple: #6a4fc0;       --purple-bg: #f0ecfb;
+  --amber: #c98a1e;        --amber-bg: #fbf1dc;
+  --red: #d0574e;          --red-bg: #fbeae8;
+  --blue: #3b74c4;         --blue-bg: #e8f0fb;
+  --slate: #64748b;        --slate-bg: #eef1f5;
+  --purple: #7a5cc4;       --purple-bg: #efeafb;
 
   /* Shape */
   --radius-xs: 6px;
@@ -75,7 +91,7 @@
   --shadow-sm: 0 1px 2px rgba(11, 23, 41, 0.05);
   --shadow: 0 4px 14px rgba(11, 23, 41, 0.07), 0 1px 2px rgba(11, 23, 41, 0.04);
   --shadow-lg: 0 18px 44px rgba(11, 23, 41, 0.18);
-  --ring: 0 0 0 3px rgba(33, 96, 212, 0.22);
+  --ring: 0 0 0 3px rgba(201, 164, 76, 0.28);
 
   /* Spacing (4px base) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px;
@@ -122,8 +138,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
 .sidebar-brand:hover { text-decoration: none; }
 .brand-mark {
   width: 32px; height: 32px; border-radius: 8px; flex: none;
-  background: linear-gradient(140deg, #2b6fe6 0%, var(--accent-strong) 100%);
-  color: #fff; display: grid; place-items: center;
+  background: linear-gradient(140deg, var(--gold-light) 0%, var(--gold-strong) 100%);
+  color: var(--ink); display: grid; place-items: center;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.14);
 }
 .brand-mark svg { width: 18px; height: 18px; display: block; }
@@ -150,7 +166,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
   text-decoration: none; margin-bottom: 1px; transition: background .12s, color .12s;
 }
 .nav-item:hover { background: rgba(255,255,255,.05); color: #fff; text-decoration: none; }
-.nav-item.active { background: rgba(33, 96, 212, .18); color: #fff; font-weight: 600; }
+.nav-item.active { background: rgba(201, 164, 76, .18); color: #fff; font-weight: 600; }
 .nav-item.active::before {
   content: ""; position: absolute; left: -12px; top: 7px; bottom: 7px; width: 3px;
   border-radius: 0 3px 3px 0; background: var(--accent-on-dark);
@@ -230,7 +246,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
   position: relative; overflow: hidden;
   background: var(--navy-900);
   background-image:
-    radial-gradient(900px 300px at 85% -40%, rgba(33, 96, 212, .38), transparent 60%),
+    radial-gradient(900px 300px at 85% -40%, rgba(201, 164, 76, .28), transparent 60%),
     linear-gradient(135deg, var(--navy-800) 0%, var(--navy-950) 100%);
   color: var(--on-dark); border-radius: var(--radius-lg);
   padding: 24px 28px 22px; margin-bottom: 22px;
@@ -257,8 +273,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
 .hero-band .dash-status .badge.red { background: rgba(240, 120, 110, .16); color: #f39a92; }
 .hero-band .btn { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.16); color: #fff; }
 .hero-band .btn:hover { background: rgba(255,255,255,.12); }
-.hero-band .btn-primary { background: var(--accent); border-color: var(--accent); }
-.hero-band .btn-primary:hover { background: var(--accent-strong); }
+.hero-band .btn-primary { background: var(--gold); border-color: var(--gold); color: var(--ink); }
+.hero-band .btn-primary:hover { background: var(--gold-light); border-color: var(--gold-light); color: var(--ink); }
 .hero-band .dash-strip { margin: 20px 0 0; background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.1); }
 .hero-band .dash-strip-item { border-right-color: rgba(255,255,255,.1); padding: 13px 18px; }
 .hero-band .dash-strip-item:hover { background: rgba(255,255,255,.05); }
@@ -280,8 +296,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 650; color: var(--text); letter-spacing
 .btn:hover { background: var(--surface-2); border-color: #b5bfcd; text-decoration: none; }
 .btn:focus-visible { outline: none; box-shadow: var(--ring); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn-primary { background: var(--gold); border-color: var(--gold); color: var(--ink); }
+.btn-primary:hover { background: var(--gold-light); border-color: var(--gold-light); color: var(--ink); }
 .btn-positive { background: var(--signal); border-color: var(--signal); color: #fff; }
 .btn-positive:hover { background: var(--signal-strong); border-color: var(--signal-strong); }
 .btn-dark { background: var(--navy-800); border-color: var(--navy-900); color: #fff; }
@@ -471,7 +487,7 @@ a.opp-co:hover { color: var(--accent); text-decoration: none; }
 .badge.red { background: var(--red-bg); color: var(--red); }
 .badge.blue { background: var(--blue-bg); color: var(--accent-strong); }
 .badge.purple { background: var(--purple-bg); color: var(--purple); }
-.badge.gold { background: var(--accent-soft); color: var(--accent-strong); }
+.badge.gold { background: var(--gold-soft); color: var(--gold-strong); }
 .badge.navy { background: var(--navy-800); color: #fff; }
 .badge.outline { background: transparent; border: 1px solid var(--border-strong); color: var(--text-2); }
 .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -740,7 +756,7 @@ details.data-details[open] > summary { border-bottom: 1px solid var(--border); }
 .map-workspace .mw-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .map-workspace .mw-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .map-workspace .mw-legend i.ring { background: transparent; border: 2.5px solid var(--signal); width: 12px; height: 12px; }
-.mw-cluster div { border-radius: 50%; background: rgba(11, 23, 41, 0.86); color: #fff; font-weight: 650; font-size: 12px; text-align: center; box-shadow: 0 0 0 4px rgba(33, 96, 212, 0.22); }
+.mw-cluster div { border-radius: 50%; background: rgba(14, 17, 22, 0.86); color: #fff; font-weight: 650; font-size: 12px; text-align: center; box-shadow: 0 0 0 4px rgba(201, 164, 76, 0.22); }
 .map-pop { font-size: 12.5px; line-height: 1.5; max-width: 270px; font-family: var(--font); }
 .map-pop > a b, .map-pop > b { font-size: 13.5px; }
 .leaflet-container { font-family: var(--font); }

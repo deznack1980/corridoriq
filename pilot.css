@@ -6,10 +6,11 @@
   src: url("/assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
 }
 :root {
-  --navy-950: #070f1c; --navy-900: #0b1729; --navy-800: #112139;
-  --accent: #2160d4; --accent-strong: #1a4eb0; --accent-soft: #ebf1fc;
+  --navy-950: #0a0e1a; --navy-900: #0e1116; --navy-800: #171b22;
+  --gold: #c9a44c; --gold-strong: #b8912f; --gold-light: #e2c179;
+  --accent: #c9a44c; --accent-strong: #b8912f; --accent-soft: rgba(201, 164, 76, 0.14);
   --signal: #13855a; --signal-strong: #0e6b48; --signal-soft: #e5f4ed;
-  --amber: #a86a0c; --amber-bg: #fcf3e2; --red: #c2413a; --red-bg: #fcebe9;
+  --amber: #c98a1e; --amber-bg: #fbf1dc; --red: #d0574e; --red-bg: #fbeae8;
   --slate: #5a6880; --slate-bg: #eef1f5;
   --bg: #f3f5f8; --surface: #fff; --surface-2: #f7f9fb; --border: #e1e6ed; --border-strong: #c9d1dc;
   --text: #0f1b2d; --text-2: #4a5568; --text-3: #738096; --on-dark-dim: #93a1b8;
@@ -59,7 +60,7 @@ h1.ptitle { font-size: 26px; line-height: 1.2; letter-spacing: -0.02em; margin: 
 }
 .btn.primary { background: var(--signal); color: #fff; }
 .btn.primary:hover { background: var(--signal-strong); }
-.btn.blue { background: var(--accent); color: #fff; }
+.btn.blue { background: var(--gold); color: #0e1116; }
 .btn.ghost { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
 .btn.small { min-height: 40px; font-size: 14px; padding: 0 14px; }
 .btn.block { width: 100%; }
@@ -73,7 +74,7 @@ input[type=text], input[type=email], input[type=tel], input[type=password], inpu
   border-radius: 10px; background: #fff; color: var(--text);
 }
 textarea { min-height: 120px; resize: vertical; }
-input:focus, textarea:focus, select:focus, .btn:focus-visible, .lang-switch button:focus-visible { outline: 3px solid rgba(33,96,212,.35); outline-offset: 1px; }
+input:focus, textarea:focus, select:focus, .btn:focus-visible, .lang-switch button:focus-visible { outline: 3px solid rgba(201,164,76,.35); outline-offset: 1px; }
 .msg { border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 14px; }
 .msg.err { background: var(--red-bg); color: var(--red); }
 .msg.ok { background: var(--signal-soft); color: var(--signal-strong); }

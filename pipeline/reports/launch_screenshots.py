@@ -42,12 +42,17 @@ def _seed(db_file: Path):
     c.close()
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    import argparse
     from playwright.sync_api import sync_playwright
 
     import pipeline.api.server as server_mod
 
-    OUT.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", default=str(OUT))
+    args = parser.parse_args(argv)
+    dest = Path(args.out)
+    dest.mkdir(parents=True, exist_ok=True)
     mailer.clear_outbox()
     rate_limit.LIMITER.reset()
 
@@ -92,6 +97,7 @@ def main() -> int:
         ("register-contractor-desktop", "/register-contractor.html", 1440, 900),
         ("register-contractor-mobile", "/register-contractor.html", 390, 844),
         ("register-supplier-desktop", "/register-supplier.html", 1440, 900),
+        ("register-supplier-mobile", "/register-supplier.html", 390, 844),
         ("login-desktop", "/login.html", 1440, 900),
         ("login-mobile", "/login.html", 390, 844),
         ("reset-password-desktop", "/reset-password.html", 1440, 900),
@@ -109,14 +115,16 @@ def main() -> int:
                 if burger.count():
                     burger.first.click()
                     page.wait_for_timeout(250)
-            page.screenshot(path=str(OUT / f"{name}.png"), full_page=True)
+            page.screenshot(path=str(dest / f"{name}.png"), full_page=True)
             page.close()
 
-        for name, path, token in (
-            ("contractor-welcome-desktop", "/contractor-welcome.html", c_token),
-            ("supplier-welcome-desktop", "/supplier-welcome.html", s_token),
+        for name, path, token, w, h in (
+            ("contractor-welcome-desktop", "/contractor-welcome.html", c_token, 1440, 900),
+            ("contractor-welcome-mobile", "/contractor-welcome.html", c_token, 390, 844),
+            ("supplier-welcome-desktop", "/supplier-welcome.html", s_token, 1440, 900),
+            ("supplier-welcome-mobile", "/supplier-welcome.html", s_token, 390, 844),
         ):
-            context = browser.new_context(viewport={"width": 1440, "height": 900})
+            context = browser.new_context(viewport={"width": w, "height": h})
             context.add_cookies([{
                 "name": settings.SESSION_COOKIE_NAME,
                 "value": token,
@@ -125,13 +133,13 @@ def main() -> int:
             page = context.new_page()
             page.goto(origin + path, wait_until="networkidle")
             page.wait_for_timeout(400)
-            page.screenshot(path=str(OUT / f"{name}.png"), full_page=True)
+            page.screenshot(path=str(dest / f"{name}.png"), full_page=True)
             context.close()
         browser.close()
 
     srv.shutdown()
     mailer.clear_outbox()
-    print(f"wrote screenshots to {OUT}")
+    print(f"wrote screenshots to {dest}")
     return 0
 
 
