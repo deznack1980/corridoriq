@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from pipeline.auth.rbac import AuthzError
-from pipeline.auth import onboarding, rate_limit
+from pipeline.auth import client_ip, onboarding, rate_limit
 from pipeline.auth.service import (
     AuthError,
     change_password,
@@ -256,7 +256,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return {}
 
     def _client(self):
-        ip = self.client_address[0] if self.client_address else None
+        peer = self.client_address[0] if self.client_address else None
+        ip = client_ip.resolve(peer, self.headers)
         ua = self.headers.get("User-Agent")
         return ip, ua
 
@@ -508,31 +509,32 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         # --- public auth (rate-limited; never creates administrators) ---
         if method == "POST" and path == "/api/auth/login":
-            rate_limit.check("login", ip)
+            rate_limit.check("login", ip, body.get("email"))
             token, user = login(conn, body.get("email", ""), body.get("password", ""),
                                 ip_address=ip, user_agent=ua)
             return self._json(200, {"user": serialize_user_context(user)}, set_cookie=token)
         if method == "POST" and path == "/api/auth/register/contractor":
-            rate_limit.check("register", ip)
+            rate_limit.check("register", ip, body.get("email"))
             token, user = onboarding.register_contractor(conn, body, ip=ip, ua=ua)
             return self._json(201, {"user": serialize_user_context(user)}, set_cookie=token)
         if method == "POST" and path == "/api/auth/register/supplier":
-            rate_limit.check("register", ip)
+            rate_limit.check("register", ip, body.get("email"))
             token, user = onboarding.register_supplier(conn, body, ip=ip, ua=ua)
             return self._json(201, {"user": serialize_user_context(user)}, set_cookie=token)
         if method == "POST" and path == "/api/auth/verify-email":
             user = onboarding.verify_email(conn, body.get("token", ""), ip=ip, ua=ua)
             return self._json(200, {"ok": True, "user": serialize_user_context(user)})
         if method == "POST" and path == "/api/auth/resend-verification":
-            rate_limit.check("resend_verification", ip)
+            rate_limit.check("resend_verification", ip, body.get("email"))
             session_user = get_current_user(conn, self._token())
             return self._json(200, onboarding.resend_verification(
                 conn, body.get("email", ""), user=session_user, ip=ip, ua=ua))
         if method == "POST" and path == "/api/auth/forgot-password":
-            rate_limit.check("forgot_password", ip)
+            rate_limit.check("forgot_password", ip, body.get("email"))
             return self._json(200, onboarding.request_password_reset(
                 conn, body.get("email", ""), ip=ip, ua=ua))
         if method == "POST" and path == "/api/auth/reset-password":
+            rate_limit.check("reset_password", ip)
             return self._json(200, onboarding.reset_password(
                 conn, body.get("token", ""), body.get("password") or body.get("new_password") or "",
                 ip=ip, ua=ua))

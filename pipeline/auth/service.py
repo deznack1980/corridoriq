@@ -203,6 +203,9 @@ def get_current_user(conn: sqlite3.Connection, token: str | None):
     row = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
     if row is None or not row["is_active"]:
         return None
+    keys = row.keys() if hasattr(row, "keys") else ()
+    if "account_state" in keys and row["account_state"] == "SUSPENDED":
+        return None
     return build_user_context(conn, row)
 
 

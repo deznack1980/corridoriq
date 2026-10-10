@@ -189,7 +189,13 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         if column in cols:
             continue
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        except sqlite3.OperationalError as exc:
+            # Concurrent or repeated migrate: column already present.
+            if "duplicate column" in str(exc).lower():
+                continue
+            raise
     conn.commit()
 
 

@@ -246,6 +246,10 @@ AUTH_REGISTER_PER_HOUR = int(_os.environ.get("CORRIDORIQ_REGISTER_PER_HOUR", "8"
 AUTH_RESET_PER_HOUR = int(_os.environ.get("CORRIDORIQ_RESET_PER_HOUR", "5"))
 AUTH_RESEND_PER_HOUR = int(_os.environ.get("CORRIDORIQ_RESEND_PER_HOUR", "5"))
 AUTH_LOGIN_PER_MINUTE = int(_os.environ.get("CORRIDORIQ_LOGIN_PER_MINUTE", "120"))
+# Forwarded-header trust is off unless operators enable it AND list the
+# proxy that terminates TLS (loopback / private Railway hop / explicit CIDR).
+TRUST_PROXY = _os.environ.get("CORRIDORIQ_TRUST_PROXY", "").strip().lower() in ("1", "true", "yes")
+TRUSTED_PROXIES = _os.environ.get("CORRIDORIQ_TRUSTED_PROXIES", "").strip()
 PUBLIC_APP_URL = (
     _os.environ.get("CORRIDORIQ_PUBLIC_URL")
     or ("https://corridoriq.pro" if AUTH_PRODUCTION else "http://127.0.0.1:8780")
