@@ -24,9 +24,8 @@ Railway serves **`fcf50fe`** (`release/corridoriq-2026-10-06`):
 | Main worktree (Cursor) | `feature/frictionless-onboarding` `f152f49` (pushed) | 44 uncommitted entries: CEO-agent work, screenshots, a pilot test addition, `pipeline/pilot/demo_server.py` | Untouched. Uncommitted work is **not** integrated. Cursor must commit it separately. |
 | `CorridorIQ-compliance` | `compliance/soc2-automation` `fcf50fe` | clean | Untouched |
 | `CorridorIQ-launch-integration` | `integration/launch-readiness-v01` `1ddbda8` (**local only, never pushed**) | 6 uncommitted entries, including an untracked `requirements.txt` | Untouched. **Risk: this branch exists on one disk only.** See decision D-3. |
-| `CorridorIQ-soc2` | `security/soc2-readiness` `9f48909` (local only) | clean | Untouched (confidential; not pushed) |
 | Others | `feature/stripe-billing`, `feature/landing-page`, `feature/ceo-native-data-intelligence-v01`, `C:/CorridorIQ-prod` (detached `d16dcd2`) | clean | Untouched |
-| **New** | `integration/onboarding-production` from `fcf50fe` at `C:\CorridorIQ-integration` | — | All work here. Placed outside the OneDrive-synced Desktop. |
+| **New** | `integration/onboarding-production` from `fcf50fe` (separate worktree) | — | All work here |
 
 ## 3. Commit-by-commit comparison
 
@@ -107,7 +106,7 @@ Integrated design. Production's `client_address.py` is kept; one opt-in mode and
 
 1. **Unchanged:** `CF-Connecting-IP` is honoured only with the shared proxy secret. `X-Forwarded-For` is never parsed.
 2. **New, opt-in:** `CORRIDORIQ_CLIENT_IP_SOURCE=railway`. Use `X-Real-IP`, a single valid address, **only when the TCP peer is a non-public address**, meaning the connection arrived through Railway's internal network. No CIDR list is hard-coded. A public peer, which on Railway would mean bypassing the edge, falls back to the peer.
-3. **New, always on:** when the resolved address is not attributable to one visitor (a non-public peer with no trusted header), per-IP buckets switch to **shared-address limits** sized for the whole platform. Email- and account-keyed buckets keep the per-visitor anti-abuse role. One visitor can no longer lock everyone out at the old per-visitor thresholds.
+3. **New, always on:** when the resolved address is not attributable to one visitor (a non-public peer with no trusted header), per-IP buckets use **shared-address limits** sized for the whole platform. Email- and account-keyed buckets keep the per-visitor anti-abuse role.
 4. Registration, verification resend and reset requests are throttled per email **and** per address. Verification and reset completion are throttled per address.
 
 ## 6. Brand
