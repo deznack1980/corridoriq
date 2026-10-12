@@ -64,7 +64,7 @@ python -m pytest pipeline/tests agents -q                               # full s
 
 | Tests | Status | Evidence |
 |---|---|---|
-| 12 CEO-agent tests: `agents/ceo/tests/test_v02_operating_system.py` (8), `test_benchmarks_and_log.py` (3), `test_system_health.py::test_brief_generation_failure_keeps_the_prior_brief_and_is_critical` | **Fail on pristine `fcf50fe` as well** | Same environment, `git archive fcf50fe`: same 12 failures |
+| `agents/ceo/tests/test_system_health.py::test_brief_generation_failure_keeps_the_prior_brief_and_is_critical` | **Pre-existing, date-dependent.** It fails the same way on pristine `fcf50fe`. Earlier reports of 12 CEO failures were an artifact of the author's test environment (corrected) | Clean run: 43 passed, 1 failed on both the tip and `fcf50fe` |
 | `test_phase2_retest.py::test_pilot_email_throttle_blocks_correct_password` | Intermittent HTTP read timeout under CPU load | Passes 3/3 in isolation |
 
 ## 5. Outstanding decisions (owner)

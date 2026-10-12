@@ -93,7 +93,12 @@ Test evidence:
 - 59 onboarding;
 - 6 brand;
 - cross-version 54/54 (including rollback);
-- full suite 1,331 passed. Its 12 CEO-agent failures also fail on pristine `fcf50fe`, and one load-induced timeout passes 3/3 alone.
+- full suite: 2 branch regressions fixed. Only **1** genuine CEO-agent failure, pre-existing and date-dependent (the earlier count of 12 was a test-environment artifact, corrected after Cursor's audit). A clean full re-run on the tip is in progress.
+- **Independent audit complete (Cursor, `2dd4fb3`):**
+  - reproduced 59 onboarding, 54/54 cross-version and 6 brand tests on `038b8bd`;
+  - **no authorization bypass found**;
+  - `038b8bd..bd1fac7` contains **no product-code changes** (ops scripts and docs only).
+  - The audit is not a release approval. The PR review/approval remains with the owner.
 
 **Approval required (A-5):** name the reviewer. *"Approved: open the draft PR"*, or the owner opens it with the command in `RELEASE_REVIEW.md` §7.
 

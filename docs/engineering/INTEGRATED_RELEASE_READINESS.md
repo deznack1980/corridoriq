@@ -138,7 +138,7 @@ the same drill against a real production backup.**
 | Integrated onboarding (`test_onboarding_integrated.py`) | **59 passed** |
 | Brand palette (`test_brand_palette.py`) | **6 passed** |
 | Cross-version + rollback harness | **54/54 checks passed** |
-| Full regression suite (`pipeline/tests` + `agents`, 1,345 tests) | **1,331 passed, 14 failed** before the fixes below. **12** are CEO-agent tests (`agents/ceo/tests/test_v02_operating_system.py`, `test_benchmarks_and_log.py`, `test_system_health.py`) that **fail identically on pristine `fcf50fe`**, so they are not caused by this branch. **2** were regressions from this branch, now fixed: (a) the shared-hop check treated reserved/documentation addresses as platform hops (caught by production's `test_trusted_proxy_…` test; narrowed to private-network ranges); (b) `test_landing_page` asserted the retired amber mark (updated to the approved gold). |
+| Full regression suite (`pipeline/tests` + `agents`, 1,345 tests) | First run: 1,331 passed, 14 failed. **2** were regressions from this branch, now fixed (shared-hop classification; the landing test asserted the retired amber). **12** were CEO-agent tests. See the correction below: only **1** is a genuine failure, and it is pre-existing. A clean full re-run on the tip is in progress. |
 | Re-run after the fixes: affected and throttle-dependent suites (pilot, phase-2 identity/remediation/retest, billing v02, CRM security, tenant isolation, Postmark, landing, client address, onboarding, brand, cross-version) | **270 passed, 1 timed out**: `test_pilot_email_throttle_blocks_correct_password` hit an HTTP read timeout under CPU contention. It **passed 3 out of 3 when re-run alone** (about 7 seconds each), so it is not an assertion failure. Plus 147/147 for the directly affected files. |
 | Production CI asset check (every local `src`/`href` exists) | Pass |
 | `node --check` on changed JS | Pass |
@@ -147,8 +147,8 @@ the same drill against a real production backup.**
 Not exercised: real Postmark delivery (C-2), Railway's real proxy headers (C-4), and browser
 end-to-end flows of the new pages.
 
-**Pre-existing, not caused by this branch:** the 12 CEO-agent test failures above. They should be
-fixed separately (they concern the CEO agent's company files, not the product).
+**Correction (2026-10-12, after Cursor's independent audit `2dd4fb3`):** the earlier count of 12 CEO-agent failures was wrong. 11 were caused by the author's test environment, which pointed `CEO_STATE_DIR` and `CEO_OUTPUT_DIR` at empty scratch folders. With a clean environment the three CEO files give **43 passed, 1 failed**, on both the integration tip and pristine `fcf50fe`. The remaining failure, `test_system_health.py::test_brief_generation_failure_keeps_the_prior_brief_and_is_critical`, is **pre-existing and date-dependent**: its fixture's last refresh is fixed at 2026-10-05, the path under test measures freshness against the real clock, and it now reports `warning`. Fix it separately (freeze the clock); it is unrelated to onboarding.
+
 
 **Brand follow-up (non-blocking):** the raster share image (`assets/brand/corridoriq-social-1200x630.png`)
 and touch icon (`corridoriq-touch-180.png`) still carry the retired amber palette. Regenerate them
