@@ -93,7 +93,7 @@ Test evidence:
 - 59 onboarding;
 - 6 brand;
 - cross-version 54/54 (including rollback);
-- full suite: 2 branch regressions fixed. Only **1** genuine CEO-agent failure, pre-existing and date-dependent (the earlier count of 12 was a test-environment artifact, corrected after Cursor's audit). A clean full re-run on the tip is in progress.
+- full suite: 2 branch regressions fixed. Only **1** genuine CEO-agent failure, pre-existing and date-dependent (the earlier count of 12 was a test-environment artifact, corrected after Cursor's audit). Clean full re-run on the tip (`6baa849`): **1,345 passed, 1 failed** (1,346 tests, 16 min). The one failure is that CEO-agent test.
 - **Independent audit complete (Cursor, `2dd4fb3`):**
   - reproduced 59 onboarding, 54/54 cross-version and 6 brand tests on `038b8bd`;
   - **no authorization bypass found**;

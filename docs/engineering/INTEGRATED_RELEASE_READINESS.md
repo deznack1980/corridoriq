@@ -138,7 +138,7 @@ the same drill against a real production backup.**
 | Integrated onboarding (`test_onboarding_integrated.py`) | **59 passed** |
 | Brand palette (`test_brand_palette.py`) | **6 passed** |
 | Cross-version + rollback harness | **54/54 checks passed** |
-| Full regression suite (`pipeline/tests` + `agents`, 1,345 tests) | First run: 1,331 passed, 14 failed. **2** were regressions from this branch, now fixed (shared-hop classification; the landing test asserted the retired amber). **12** were CEO-agent tests. See the correction below: only **1** is a genuine failure, and it is pre-existing. A clean full re-run on the tip is in progress. |
+| Full regression suite (`pipeline/tests` + `agents`, 1,346 tests) | **Clean re-run on the tip (`6baa849`): 1,345 passed, 1 failed** (16 min). The failure is the pre-existing, date-dependent CEO-agent test described below. First run: 1,331 passed, 14 failed. **2** were regressions from this branch, now fixed (shared-hop classification; the landing test asserted the retired amber). **12** were CEO-agent tests. See the correction below: only **1** is a genuine failure, and it is pre-existing. |
 | Re-run after the fixes: affected and throttle-dependent suites (pilot, phase-2 identity/remediation/retest, billing v02, CRM security, tenant isolation, Postmark, landing, client address, onboarding, brand, cross-version) | **270 passed, 1 timed out**: `test_pilot_email_throttle_blocks_correct_password` hit an HTTP read timeout under CPU contention. It **passed 3 out of 3 when re-run alone** (about 7 seconds each), so it is not an assertion failure. Plus 147/147 for the directly affected files. |
 | Production CI asset check (every local `src`/`href` exists) | Pass |
 | `node --check` on changed JS | Pass |
