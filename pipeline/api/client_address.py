@@ -79,13 +79,25 @@ def client_ip_source(value: str | None = None) -> str:
     return RAILWAY if raw.strip().lower() == RAILWAY else "peer"
 
 
+# Address space a platform proxy hop uses (never a visitor on the internet):
+# RFC 1918, carrier-grade NAT, link-local, IPv6 unique-local and link-local.
+# Deliberately narrower than "not global": documentation, benchmark and other
+# reserved ranges are not treated as platform hops.
+_PLATFORM_NETWORKS = tuple(ipaddress.ip_network(n) for n in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+    "fc00::/7", "fe80::/10",
+))
+
+
 def _internal(value: str | None) -> bool:
-    """Non-public and non-loopback: a platform network hop, not a visitor."""
+    """A platform network hop (private address space), not a visitor."""
     try:
         addr = ipaddress.ip_address(value)
     except (TypeError, ValueError):
         return False
-    return not addr.is_global and not addr.is_loopback
+    if getattr(addr, "ipv4_mapped", None):
+        addr = addr.ipv4_mapped
+    return any(addr in net for net in _PLATFORM_NETWORKS if net.version == addr.version)
 
 
 def _public(value: str | None) -> bool:

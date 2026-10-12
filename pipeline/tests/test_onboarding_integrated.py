@@ -472,6 +472,9 @@ def test_shared_address_classification():
     assert client_address.is_shared_address("10.0.0.1")
     assert not client_address.is_shared_address("127.0.0.1")
     assert not client_address.is_shared_address("8.8.4.4")
+    assert client_address.is_shared_address("fd12::1")
+    # Reserved/documentation ranges are not platform hops (a trusted header may resolve them).
+    assert not client_address.is_shared_address("203.0.113.10")
     assert not client_address.is_shared_address("unknown")
 
 

@@ -104,7 +104,7 @@ production's `tokens.issue`/`tokens.consume` under the new purpose `portal_email
   - Uses `X-Real-IP` only from a non-public peer, and only when the value is a single public address. Railway documents that its edge sets this header ([Railway Specs & Limits](https://docs.railway.com/networking/public-networking/specs-and-limits)), and staff state the edge overwrites client copies ([Railway Station](https://station.railway.com/questions/which-client-address-headers-does-the-ra-fb9e36d7)).
   - No Railway IP range is hard-coded, because none is published.
   - `X-Forwarded-For` is never read.
-- **Shared-hop safety net:** per-IP limits keyed on a non-public, non-loopback address are multiplied by 25. Email-keyed limits (registration 5, reset 5, resend 5, login failures 20 per 10 minutes) and account lockout keep the per-visitor controls.
+- **Shared-hop safety net:** per-IP limits keyed on a private-network address (RFC 1918, carrier-grade NAT `100.64.0.0/10`, link-local, IPv6 unique-local), meaning a platform proxy hop rather than a visitor, are multiplied by 25. Email-keyed limits (registration 5, reset 5, resend 5, login failures 20 per 10 minutes) and account lockout keep the per-visitor controls.
 - **New limits (per 10 minutes):**
   - registration: 10 per address, 5 per email
   - verification completions: 30 per address
@@ -138,13 +138,21 @@ the same drill against a real production backup.**
 | Integrated onboarding (`test_onboarding_integrated.py`) | **59 passed** |
 | Brand palette (`test_brand_palette.py`) | **6 passed** |
 | Cross-version + rollback harness | **54/54 checks passed** |
-| Full regression suite (`pipeline/tests` + `agents`) | *pending, filled in at completion* |
+| Full regression suite (`pipeline/tests` + `agents`, 1,345 tests) | **1,331 passed, 14 failed** before the fixes below. **12** are CEO-agent tests (`agents/ceo/tests/test_v02_operating_system.py`, `test_benchmarks_and_log.py`, `test_system_health.py`) that **fail identically on pristine `fcf50fe`**, so they are not caused by this branch. **2** were regressions from this branch, now fixed: (a) the shared-hop check treated reserved/documentation addresses as platform hops (caught by production's `test_trusted_proxy_…` test; narrowed to private-network ranges); (b) `test_landing_page` asserted the retired amber mark (updated to the approved gold). |
+| Re-run after the fixes: affected and throttle-dependent suites (pilot, phase-2 identity/remediation/retest, billing v02, CRM security, tenant isolation, Postmark, landing, client address, onboarding, brand, cross-version) | **270 passed, 1 timed out**: `test_pilot_email_throttle_blocks_correct_password` hit an HTTP read timeout under CPU contention. It **passed 3 out of 3 when re-run alone** (about 7 seconds each), so it is not an assertion failure. Plus 147/147 for the directly affected files. |
 | Production CI asset check (every local `src`/`href` exists) | Pass |
 | `node --check` on changed JS | Pass |
 | Real server entry point smoke test (loopback, synthetic data) | Pass: health, `robots.txt`, `sitemap.xml`, onboarding pages, public preview, supplier registration |
 
 Not exercised: real Postmark delivery (C-2), Railway's real proxy headers (C-4), and browser
 end-to-end flows of the new pages.
+
+**Pre-existing, not caused by this branch:** the 12 CEO-agent test failures above. They should be
+fixed separately (they concern the CEO agent's company files, not the product).
+
+**Brand follow-up (non-blocking):** the raster share image (`assets/brand/corridoriq-social-1200x630.png`)
+and touch icon (`corridoriq-touch-180.png`) still carry the retired amber palette. Regenerate them
+from the gold SVG mark.
 
 ## 9. Remaining blockers
 

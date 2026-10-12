@@ -213,11 +213,13 @@ def test_no_third_party_branded_photography():
         assert "phoenix-construction-hero" not in f.name and "phoenix-construction-tower" not in f.name, f.name
 
 
-def test_brand_mark_uses_the_graphite_amber_palette():
+def test_brand_mark_uses_the_approved_gold_palette():
+    # Owner-approved palette (gold #c9a44c); the earlier graphite-amber is retired.
     html = _html()
     assert html.count('src="assets/brand/corridoriq-mark-amber.svg"') == 2
     svg = (REPO / "assets" / "brand" / "corridoriq-mark-amber.svg").read_text(encoding="utf-8").lower()
-    assert "#e8952b" in svg and "#1a4eb0" not in svg and "#5fd3a0" not in svg
+    assert "#c9a44c" in svg and "#e8952b" not in svg
+    assert "#1a4eb0" not in svg and "#5fd3a0" not in svg
 
 
 def test_share_metadata_is_complete_and_points_at_served_assets():

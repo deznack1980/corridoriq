@@ -106,7 +106,7 @@ Integrated design. Production's `client_address.py` is kept; one opt-in mode and
 
 1. **Unchanged:** `CF-Connecting-IP` is honoured only with the shared proxy secret. `X-Forwarded-For` is never parsed.
 2. **New, opt-in:** `CORRIDORIQ_CLIENT_IP_SOURCE=railway`. Use `X-Real-IP`, a single valid address, **only when the TCP peer is a non-public address**, meaning the connection arrived through Railway's internal network. No CIDR list is hard-coded. A public peer, which on Railway would mean bypassing the edge, falls back to the peer.
-3. **New, always on:** when the resolved address is not attributable to one visitor (a non-public peer with no trusted header), per-IP buckets use **shared-address limits** sized for the whole platform. Email- and account-keyed buckets keep the per-visitor anti-abuse role.
+3. **New, always on:** when the resolved address is a platform hop (private-network address space) rather than a visitor, per-IP buckets use **shared-address limits** sized for the whole platform. Email- and account-keyed buckets keep the per-visitor anti-abuse role.
 4. Registration, verification resend and reset requests are throttled per email **and** per address. Verification and reset completion are throttled per address.
 
 ## 6. Brand
