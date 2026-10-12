@@ -80,7 +80,8 @@ The integrated onboarding release has six blocked gates and does not change this
 |---|---|
 | `test_signup_delivery_hotfix.py` | **17 passed**: full journey (signup → email → link → password → logout → login → contractor portal request), Postmark rejection logged and audited with the link revoked, unreachable provider logged, already-registered notice, throttle logged, supplier inbox and admin access unaffected, verified TLS, client-address and shared-hop cases |
 | `pilot_signup_live_test.py` dry run | **6/6 PASS** (signup, handed to provider, link completes, sign-in, session, portal) |
-| Production regression subset (pilot, phase-2 identity/remediation/retest, Postmark, client address, CRM security, tenant isolation, billing ×3, landing, trust portal) | **498 passed, 0 failed** (11 min). A full-suite run is queued. |
+| Production regression subset (pilot, phase-2 identity/remediation/retest, Postmark, client address, CRM security, tenant isolation, billing ×3, landing, trust portal) | **498 passed, 0 failed** (11 min) |
+| Full suite (`pipeline/tests` + `agents`, clean environment, `d72152e`) | **1,296 passed, 1 failed** (26 min). The one failure is `agents/ceo/tests/test_system_health.py::test_brief_generation_failure_keeps_the_prior_brief_and_is_critical`. It is pre-existing and date-dependent: its fixture's last refresh is fixed at 2026-10-05, so it now reports `warning`, and it fails identically on `fcf50fe`. It is unrelated to signup. |
 
 Not yet exercised: a real Postmark send (needs owner approval, A-2) and Railway's real proxy headers (staging, A-4).
 
