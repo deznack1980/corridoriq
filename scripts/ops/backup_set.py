@@ -97,6 +97,14 @@ def create(out: Path) -> Path:
     databases = discover()
     if not databases:
         raise SystemExit("no databases found under the configured roots")
+    return create_from(databases, out)
+
+
+def create_from(databases: list[tuple[str, Path]], out: Path) -> Path:
+    """Back up an explicit list of ``(name inside the set, source file)`` pairs.
+
+    Sources are opened read-only; ``VACUUM INTO`` never writes to them.
+    """
     set_dir = out / f"corridoriq_set_{_now():%Y%m%dT%H%M%SZ}"
     if set_dir.exists():
         raise SystemExit(f"backup set already exists: {set_dir}")
