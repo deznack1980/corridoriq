@@ -5,12 +5,25 @@ Keys are chosen by the caller: the resolved client IP (see
 email-addressed flows, the normalized email. Responses to throttled requests
 are identical in shape to normal ones where enumeration matters; callers
 decide whether to return 429 or a generic accepted response.
+
+Per-IP buckets (names ending in ``_ip``) assume the key identifies one
+visitor. When the key is a platform-internal hop shared by every visitor
+(no trusted client-address source attributed the request), the limit is
+multiplied by ``SHARED_ADDRESS_FACTOR`` so one visitor cannot exhaust a
+platform-wide bucket at per-visitor thresholds. Per-email buckets are
+unaffected and remain the per-visitor control. Configure an attributing
+source (``CORRIDORIQ_CLIENT_IP_SOURCE=railway`` or the Cloudflare hosted
+mode) for true per-visitor IP limits.
 """
 
 from __future__ import annotations
 
 import threading
 import time
+
+from pipeline.api.client_address import is_shared_address
+
+SHARED_ADDRESS_FACTOR = 25
 
 
 class Throttle:
@@ -25,9 +38,15 @@ class Throttle:
         self._hits[(bucket, key)] = hits
         return hits
 
+    def limit_for(self, bucket: str, key) -> int | None:
+        limit = self.limits.get(bucket)
+        if limit and bucket.endswith("_ip") and is_shared_address(key):
+            return limit * SHARED_ADDRESS_FACTOR
+        return limit
+
     def blocked(self, bucket: str, key: str) -> bool:
         """Side-effect-free: True when this key is already at the limit."""
-        limit = self.limits.get(bucket)
+        limit = self.limit_for(bucket, key)
         if not limit or key is None:
             return False
         now = time.monotonic()
@@ -44,7 +63,7 @@ class Throttle:
 
     def hit(self, bucket: str, key: str) -> bool:
         """Record one attempt; return True when the caller must be throttled."""
-        limit = self.limits.get(bucket)
+        limit = self.limit_for(bucket, key)
         if not limit or key is None:
             return False
         now = time.monotonic()

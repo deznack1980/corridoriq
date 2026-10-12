@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -47,6 +49,18 @@ PILOT_PASSWORD_CHANGED = "pilot_password_changed"
 PORTAL_INVITE = "portal_owner_invitation"
 PORTAL_RESET = "portal_password_reset"
 PORTAL_PASSWORD_CHANGED = "portal_password_changed"
+PILOT_ALREADY_REGISTERED = "pilot_already_registered"
+
+# Postmark API error codes most relevant to delivery (operator hints for logs).
+POSTMARK_ERROR_HINTS = {
+    10: "bad or missing server API token",
+    300: "invalid email request (check From/To)",
+    400: "sender signature not found for the From address",
+    401: "sender signature not confirmed",
+    405: "account not allowed to send (suspended or out of credits)",
+    406: "recipient inactive (previous bounce or spam complaint): check Suppressions",
+    412: "account pending approval: may only send to the sender's own domain",
+}
 
 
 class MailNotConfigured(Exception):
@@ -103,14 +117,25 @@ class DevSinkMailer:
 _sink = DevSinkMailer()
 
 
+def tls_context() -> ssl.SSLContext:
+    """Certificate- and hostname-verifying client context, TLS 1.2 minimum."""
+    ctx = ssl.create_default_context()
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
+
 def _default_transport(url: str, data: bytes, headers: dict) -> tuple[int, bytes]:  # pragma: no cover - network
     """POST to Postmark over HTTPS. Isolated so tests inject a fake transport."""
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=tls_context()) as resp:
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
-        return exc.code, b""
+        # The body carries Postmark's ErrorCode; only that number is ever used.
+        try:
+            return exc.code, exc.read()
+        except Exception:
+            return exc.code, b""
 
 
 class PostmarkMailer:
@@ -154,7 +179,18 @@ class PostmarkMailer:
             # Suppress the cause chain so no response body/header can leak.
             raise MailSendError(f"postmark request failed: {type(exc).__name__}") from None
         if not (200 <= int(status) < 300):
-            raise MailSendError(f"postmark send rejected (HTTP {int(status)})")
+            raise MailSendError(f"postmark send rejected (HTTP {int(status)}"
+                                f"{_error_code_suffix(_body)})")
+
+
+def _error_code_suffix(body) -> str:
+    """", ErrorCode N" from a Postmark error body. The message text is never used
+    (it can contain recipient addresses)."""
+    try:
+        code = json.loads(body or b"{}").get("ErrorCode")
+        return f", ErrorCode {int(code)}" if code is not None else ""
+    except Exception:
+        return ""
 
 
 def provider_name() -> str:
@@ -202,9 +238,30 @@ def _hours(expires_at: str) -> str:
     return expires_at.replace("T", " ")
 
 
+def log_outcome(kind: str, exc: Exception | None = None) -> None:
+    """One stdout line per identity email (Railway keeps stdout as the service log).
+
+    Never includes the recipient, the link, the token or the provider message text.
+    """
+    if exc is None:
+        line = f"MAIL_SENT kind={kind} provider={provider_name()}"
+    else:
+        reason = str(exc) if isinstance(exc, (MailSendError, MailNotConfigured)) else type(exc).__name__
+        line = f"MAIL_DELIVERY_FAILED kind={kind} provider={provider_name()} reason={reason}"
+        code = reason.rsplit("ErrorCode ", 1)[-1].rstrip(")") if "ErrorCode " in reason else None
+        if code and code.isdigit() and int(code) in POSTMARK_ERROR_HINTS:
+            line += f" hint={POSTMARK_ERROR_HINTS[int(code)]}"
+    print(line, file=sys.stdout, flush=True)
+
+
 def send(message: Message) -> None:
     message.to = message.to.strip().lower()
-    get_mailer().send(message)
+    try:
+        get_mailer().send(message)
+    except Exception as exc:
+        log_outcome(message.kind, exc)
+        raise
+    log_outcome(message.kind)
 
 
 # ---- message builders (plain text, no tracking, no marketing) ---------------
@@ -233,6 +290,19 @@ def pilot_password_reset(to: str, link: str, expires_at: str) -> Message:
         text=(f"Open this link to choose a new password:\n\n{link}\n\n"
               f"The link expires at {_hours(expires_at)} UTC and can be used once. "
               "If you did not request a password reset, you can ignore this message; your password has not changed."))
+
+
+def pilot_already_registered(to: str) -> Message:
+    """Sent instead of a signup link when the address already has an account. No token."""
+    base = public_base_url()
+    return Message(
+        to=to, kind=PILOT_ALREADY_REGISTERED,
+        subject="You already have a CorridorIQ contractor account",
+        text=("Someone (probably you) tried to create a CorridorIQ contractor account with this email "
+              "address, which already has one.\n\n"
+              f"Sign in: {base}/contractor-account.html?mode=signin\n"
+              f"Forgot your password? {base}/contractor-account.html?mode=forgot\n\n"
+              "If this was not you, no action is needed."))
 
 
 def pilot_password_changed(to: str) -> Message:

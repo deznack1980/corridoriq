@@ -72,6 +72,17 @@ def production_problems() -> list[str]:
     return problems
 
 
+def production_advisories() -> list[str]:
+    """Non-blocking production warnings (printed at startup, never public)."""
+    if not is_production():
+        return []
+    from pipeline.api.client_address import client_ip_source, hosted_proxy_enabled
+    advisories = []
+    if client_ip_source() != "railway" and not hosted_proxy_enabled():
+        advisories.append("client_ip_unattributed")
+    return advisories
+
+
 def runtime_problems() -> list[str]:
     return environment_problems() + production_problems()
 

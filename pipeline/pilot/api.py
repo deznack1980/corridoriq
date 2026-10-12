@@ -125,6 +125,8 @@ def _route(h, platform: Platform, conn, method, path, query, body):
             if throttle.pilot.hit("signup_ip", str(ip or "unknown")):
                 raise PilotError("too_many_requests", status=429)
             if email and throttle.pilot.hit("signup_email", email):
+                # Same public answer; nothing is sent. Logged so operators can see it.
+                print("SIGNUP_THROTTLED scope=email window=10m", flush=True)
                 return h._json(202, {"status": "check_email"})
             return h._json(202, accounts.request_contractor_signup(conn, platform, body, ip=ip, ua=ua))
         if path == "/api/pilot/auth/complete-signup":

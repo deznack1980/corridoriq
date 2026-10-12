@@ -155,9 +155,16 @@ def request_contractor_signup(conn, platform: Platform, body: dict, *, ip=None, 
     email = fields["email"]
     existing = conn.execute("SELECT id FROM users WHERE normalized_email=?", (email,)).fetchone()
     if existing:
+        # Same public answer (no enumeration), but the owner of the address now
+        # receives a no-token notice instead of nothing.
+        try:
+            mail.send(mail.pilot_already_registered(email))
+            result = "already_registered_notice_sent"
+        except Exception:
+            result = "already_registered_mail_unavailable"
         auth.write_audit(conn, event_type="email_verification_requested", success=True,
                          user_id=existing["id"], ip_address=ip, user_agent=ua,
-                         details={"email": email, "result": "already_registered"})
+                         details={"email": email, "result": result})
         return dict(auth.GENERIC_CHECK_EMAIL)
     referral = resolve_referral(conn, platform, body.get("referral_code")) if body.get("referral_code") else None
     utm = analytics.clean_utm(body.get("utm"))
@@ -170,17 +177,22 @@ def request_contractor_signup(conn, platform: Platform, body: dict, *, ip=None, 
                                 email=email, context=context, ip=ip)
     conn.commit()
     link = mail.token_link("contractor-account.html", "complete", raw)
+    mail_error = None
     try:
         mail.send(mail.pilot_signup_verification(email, link, expires))
         delivered = True
-    except Exception:
+    except Exception as exc:
         tokens.revoke(conn, purpose=tokens.PILOT_SIGNUP, email=email)
         conn.commit()
         delivered = False
+        mail_error = str(exc) if isinstance(exc, (mail.MailSendError, mail.MailNotConfigured)) \
+            else type(exc).__name__
+    details = {"email": email, "purpose": "pilot_signup",
+               "result": "sent" if delivered else "mail_unavailable"}
+    if mail_error:
+        details["mail_error"] = mail_error
     auth.write_audit(conn, event_type="email_verification_requested", success=True,
-                     ip_address=ip, user_agent=ua,
-                     details={"email": email, "purpose": "pilot_signup",
-                              "result": "sent" if delivered else "mail_unavailable"})
+                     ip_address=ip, user_agent=ua, details=details)
     return dict(auth.GENERIC_CHECK_EMAIL)
 
 

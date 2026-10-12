@@ -714,8 +714,11 @@ class ApiHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    from pipeline.auth.readiness import refuse_unsafe_production
+    from pipeline.auth.readiness import production_advisories, refuse_unsafe_production
     refuse_unsafe_production()
+    for code in production_advisories():
+        # Non-blocking; e.g. client_ip_unattributed -> set CORRIDORIQ_CLIENT_IP_SOURCE.
+        print(f"WARNING: {code}")
     init_db()  # ensure schema + seed once at startup
     server = ThreadingHTTPServer((HOST, PORT), ApiHandler)
     # Pre-compute Today's Accounts and the organization opportunity scan after
