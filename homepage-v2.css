@@ -1,0 +1,61 @@
+/* CorridorIQ editorial redesign — scoped to standalone homepage */
+:root{--bg:#071625;--panel:#0f2a3e;--ink:#fffaf1;--muted:#d1dce4;--line:#476074;--gold:#f5bb50;--mint:#91d9de}
+body{background:#071625;color:#fffaf1;font-family:Arial,"Segoe UI",sans-serif}
+.topbar{background:rgba(4,18,32,.93);border-bottom:1px solid rgba(245,187,80,.35);backdrop-filter:blur(18px)}
+.navrow{height:92px}
+.brand{font-size:25px;letter-spacing:-.055em;gap:0}
+.brandmark{display:none}
+.brand small{letter-spacing:.26em;color:#c7d6e0}
+.brand-accent{color:#ffc667}
+.desktopnav a,.signin{color:#f2f6fa}
+.navcta,.button.primary{background:linear-gradient(110deg,#ffe3a0 0%,#e8a83e 47%,#ffd27a 100%);color:#061725;box-shadow:0 6px 26px #dca04145}
+.navcta:hover,.button.primary:hover{background:linear-gradient(110deg,#fff0c9,#f6bf5d,#ffe09d)}
+.hero{position:relative;max-width:none;padding-top:132px;padding-bottom:130px;min-height:790px;grid-template-columns:minmax(0,1.12fr) minmax(380px,.88fr);gap:5vw;overflow:hidden;background:linear-gradient(90deg,rgba(4,17,31,.97) 0%,rgba(5,19,34,.91) 34%,rgba(5,20,36,.60) 70%,rgba(5,20,36,.78) 100%),linear-gradient(0deg,#071625 0%,transparent 32%),url("https://commons.wikimedia.org/wiki/Special:FilePath/Phoenix_Skyline_2025.jpg?width=1930") center 43%/cover no-repeat}
+.hero:before{content:"";position:absolute;inset:0;background:linear-gradient(140deg,transparent 45%,rgba(244,178,66,.15) 80%,transparent 100%);pointer-events:none}
+.hero:after{content:"";position:absolute;bottom:0;left:0;right:0;height:5px;background:linear-gradient(90deg,transparent,#ffca67 48%,transparent)}
+.hero>*{position:relative;z-index:1}
+.hero-copy{max-width:740px}
+.eyebrow,.kicker{color:#ffc667}
+.hero h1{font-size:clamp(56px,5.9vw,91px);font-weight:800;line-height:1.05;text-shadow:0 4px 34px #0009}
+.hero h1 em,.final-cta h2 em,.art-quote em{color:#ffc667}
+.lede{color:#f2f5f5;font-size:18px;line-height:1.75;max-width:650px;text-shadow:0 2px 16px #000}
+.button{border-radius:3px;padding:19px 24px;font-size:13px;text-transform:uppercase;letter-spacing:.065em}
+.button.secondary{background:rgba(7,25,42,.6);border:1px solid #e9bd70;color:#fff7e8;backdrop-filter:blur(8px)}
+.micro{color:#d9e3e9}
+.hero-visual{border:1px solid #b98d5366;background:linear-gradient(160deg,rgba(8,27,44,.91),rgba(15,42,61,.84));backdrop-filter:blur(20px);box-shadow:0 34px 100px #0009;border-radius:3px}
+.visual-stage{background:rgba(17,42,62,.89);border-color:#4d6576;border-radius:3px}
+.visual-stage.final{border-color:#dbab65}
+.stage-icon,.step,.split-mini span,.workspace-title span,.feature-list>div>span,.text-cta{color:#ffd080}
+.signal-lines i:nth-child(2){background:#f3bc5b}
+.divider{border-color:#456076;color:#c1d1dc}
+.paths{padding-top:115px;padding-bottom:135px}
+.section-heading h2,.audience h2,.roadmap h2{font-weight:800;letter-spacing:-.06em}
+.section-heading p,.audience-copy>p,.roadmap p{color:#c7d4dc}
+.path-grid{gap:24px}
+.path-card{min-height:410px;padding:42px;border-radius:3px;overflow:hidden;border-color:#7c94a655;background:linear-gradient(145deg,rgba(9,31,49,.94),rgba(14,50,70,.90)),url("https://commons.wikimedia.org/wiki/Special:FilePath/Phoenix_Skyline_2025.jpg?width=1280") center/cover}
+.path-card.supplier{background:linear-gradient(145deg,rgba(13,36,52,.93),rgba(34,60,64,.88)),url("https://commons.wikimedia.org/wiki/Special:FilePath/Phoenix_Skyline_2025.jpg?width=1280") center/cover;border-color:#728f9b88}
+.path-card:after{content:"";position:absolute;right:-55px;bottom:-100px;width:240px;height:240px;border:1px solid #e9b96d44;transform:rotate(45deg);pointer-events:none}
+.path-card h3{font-size:clamp(30px,3vw,41px);margin-top:80px}
+.path-card p{color:#dce6ec}
+.card-number,.card-link{color:#ffcf7d}
+.how-section{background:linear-gradient(130deg,#f7f3e9,#d9e4e7);color:#0a2638}
+.how-grid article{border-color:#9cb1bd}
+.how-grid h3{color:#102f43}
+.audience{padding-top:160px;padding-bottom:160px}
+.feature-list{border-color:#4a6071}
+.feature-list>div{border-color:#4a6071}
+.feature-list small,.availability{color:#aebec9!important}
+.product-panel{border:1px solid #9b774b;background:linear-gradient(145deg,#19394e,#0c2537);border-radius:3px;box-shadow:20px 22px 0 #edb9571c,0 32px 70px #0007}
+.pill{color:#ffe0a0;border-color:#b89152}
+.roadmap{background:linear-gradient(110deg,#112f47,#0a1e32 65%,#18354a)}
+.roadmap-stack>div{background:linear-gradient(120deg,#1b4059,#17344b);border-color:#53738a;border-radius:3px}
+.roadmap-stack span{color:#ffd27a}
+.supplier-art{background:linear-gradient(120deg,rgba(6,28,47,.76),rgba(6,30,46,.5)),url("https://commons.wikimedia.org/wiki/Special:FilePath/Phoenix_Skyline_2025.jpg?width=1280") center/cover;border-color:#ae8a59;border-radius:3px;box-shadow:0 30px 60px #0007}
+.supplier-art>span{color:#ffe2a6}
+.art-bottom{border-color:#b1c3c6}
+.final-cta{background:linear-gradient(120deg,#f6f1e6,#e4d9c4);color:#071d2e}
+.final-cta h2 em{color:#a97019}
+.footer{background:#04111f;border-top:1px solid #3d5264}
+@media(max-width:1100px){.hero{grid-template-columns:1fr 1fr;gap:35px}.hero h1{font-size:clamp(51px,5.6vw,74px)}}
+@media(max-width:800px){.hero{grid-template-columns:1fr;min-height:unset;padding-top:90px;padding-bottom:90px;background-position:center}.hero h1{font-size:clamp(45px,9vw,66px)}.hero-visual{max-width:650px}.path-card{min-height:360px}.audience{padding-top:95px;padding-bottom:95px}}
+@media(max-width:480px){.navrow{height:75px}.brand{font-size:21px}.hero{padding-top:72px}.hero h1{font-size:45px}.lede{font-size:16px}.path-card{padding:27px}.path-card h3{font-size:30px}.hero-visual{padding:14px}}
