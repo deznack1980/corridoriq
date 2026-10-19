@@ -14,11 +14,15 @@ message.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import secrets
+import sys
 import threading
 import urllib.error
 import urllib.request
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -48,6 +52,21 @@ PORTAL_INVITE = "portal_owner_invitation"
 PORTAL_RESET = "portal_password_reset"
 PORTAL_PASSWORD_CHANGED = "portal_password_changed"
 
+# Numeric Postmark codes used only to label a log line. The provider's Message
+# text is never stored or printed.
+POSTMARK_CATEGORIES = {
+    10: "bad_token",
+    300: "invalid_request",
+    400: "sender_not_found",
+    401: "sender_unconfirmed",
+    405: "sending_not_allowed",
+    406: "recipient_inactive",
+    412: "account_pending",
+    422: "invalid_stream",
+}
+
+_REQUEST_ID: ContextVar[str] = ContextVar("corridoriq_mail_request_id", default="")
+
 
 class MailNotConfigured(Exception):
     pass
@@ -56,7 +75,26 @@ class MailNotConfigured(Exception):
 class MailSendError(Exception):
     """Delivery failed. The message never contains the token, recipient body,
     or provider response body — only a safe, generic reason."""
-    pass
+
+    def __init__(self, message: str, *, http_status: int | None = None,
+                 error_code: int | None = None, category: str | None = None,
+                 stream: str | None = None, token_fp: str | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+        self.error_code = error_code
+        self.category = category
+        self.stream = stream
+        self.token_fp = token_fp
+
+
+@dataclass
+class SendResult:
+    http_status: int | None = None
+    error_code: int | None = None
+    message_id: str | None = None
+    stream: str | None = None
+    token_fp: str | None = None
+    category: str = "accepted"
 
 
 @dataclass
@@ -110,7 +148,11 @@ def _default_transport(url: str, data: bytes, headers: dict) -> tuple[int, bytes
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
-        return exc.code, b""
+        # Read the body so ErrorCode can be logged. The text itself is never logged.
+        try:
+            return exc.code, exc.read()
+        except Exception:
+            return exc.code, b""
 
 
 class PostmarkMailer:
@@ -141,20 +183,37 @@ class PostmarkMailer:
             "MessageStream": self._stream,
         }
 
-    def send(self, message: "Message") -> None:
+    def send(self, message: "Message") -> SendResult:
         data = json.dumps(self.build_payload(message)).encode("utf-8")
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "X-Postmark-Server-Token": self._token,
         }
+        fingerprint = token_fingerprint(self._token)
         try:
-            status, _body = self._transport(POSTMARK_API_URL, data, headers)
+            status, body = self._transport(POSTMARK_API_URL, data, headers)
         except Exception as exc:
-            # Suppress the cause chain so no response body/header can leak.
-            raise MailSendError(f"postmark request failed: {type(exc).__name__}") from None
+            # Suppress the cause chain so no response body or header can leak.
+            category = "timeout" if isinstance(exc, TimeoutError) else "network"
+            raise MailSendError(
+                f"postmark request failed: {type(exc).__name__}",
+                category=category, stream=self._stream, token_fp=fingerprint,
+            ) from None
+        parsed = _safe_postmark_fields(body)
         if not (200 <= int(status) < 300):
-            raise MailSendError(f"postmark send rejected (HTTP {int(status)})")
+            code = parsed.get("error_code")
+            raise MailSendError(
+                f"postmark send rejected (HTTP {int(status)})",
+                http_status=int(status), error_code=code,
+                category=_failure_category(int(status), code),
+                stream=self._stream, token_fp=fingerprint,
+            )
+        return SendResult(
+            http_status=int(status), error_code=parsed.get("error_code"),
+            message_id=parsed.get("message_id"), stream=self._stream,
+            token_fp=fingerprint, category="accepted",
+        )
 
 
 def provider_name() -> str:
@@ -202,9 +261,119 @@ def _hours(expires_at: str) -> str:
     return expires_at.replace("T", " ")
 
 
+def _safe_postmark_fields(body) -> dict:
+    """ErrorCode and MessageID only. Postmark's Message text can name a recipient."""
+    try:
+        payload = json.loads(body or b"{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    out = {}
+    code = payload.get("ErrorCode")
+    if isinstance(code, int) and not isinstance(code, bool):
+        out["error_code"] = code
+    message_id = payload.get("MessageID")
+    if isinstance(message_id, str) and message_id and all(ch.isalnum() or ch == "-" for ch in message_id):
+        out["message_id"] = message_id[:64]
+    return out
+
+
+def _failure_category(http_status: int, error_code: int | None) -> str:
+    if error_code in POSTMARK_CATEGORIES:
+        return POSTMARK_CATEGORIES[error_code]
+    if http_status in (400, 401, 422):
+        return f"http_{http_status}"
+    return "rejected"
+
+
+def token_fingerprint(token: str) -> str:
+    """Short hash so two server credentials can be compared. Not reversible."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:8]
+
+
+def begin_request() -> str:
+    request_id = secrets.token_hex(4)
+    _REQUEST_ID.set(request_id)
+    return request_id
+
+
+def _sender_domain() -> str:
+    raw = (os.environ.get(ENV_MAIL_FROM) or DEFAULT_FROM).strip()
+    address = raw.split("<")[-1].strip(" >")
+    if "@" not in address:
+        return "-"
+    return address.rsplit("@", 1)[-1]
+
+
+def _field(value) -> str:
+    """One log token. Drops newlines and characters that could carry an address."""
+    text = "-" if value is None or value == "" else str(value)
+    cleaned = "".join(ch for ch in text if ch.isalnum() or ch in " ._:-(),/")
+    return " ".join(cleaned.split()) or "-"
+
+
+def _emit(event: str, **fields) -> None:
+    fields.setdefault("ts", datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
+    fields.setdefault("request_id", _REQUEST_ID.get() or "-")
+    parts = [event]
+    for key, value in fields.items():
+        parts.append(f"{key}={_field(value)}")
+    print(" ".join(parts), file=sys.stdout, flush=True)
+
+
+def note_rate_limit(scope: str) -> None:
+    """A signup was refused before any provider call. No address and no IP."""
+    _emit("MAIL_RATE_LIMITED", kind=PILOT_SIGNUP, scope=scope, window="10m", category="rate_limited")
+
+
+def log_outcome(kind: str, exc: Exception | None = None, *, result: SendResult | None = None) -> None:
+    """One stdout line per identity email. Railway keeps stdout as the service log.
+
+    Never includes the recipient, the link, the API token, or the provider message text.
+    """
+    if exc is None:
+        _emit(
+            "MAIL_SENT", kind=kind, provider=provider_name(),
+            http_status=None if result is None else result.http_status,
+            error_code=None if result is None else result.error_code,
+            message_id=None if result is None else result.message_id,
+            stream=None if result is None else result.stream,
+            token_fp=None if result is None else result.token_fp,
+            from_domain=_sender_domain(),
+            category="accepted" if result is None else result.category,
+        )
+        return
+    reason = str(exc) if isinstance(exc, (MailSendError, MailNotConfigured)) else type(exc).__name__
+    _emit(
+        "MAIL_DELIVERY_FAILED", kind=kind, provider=provider_name(),
+        http_status=getattr(exc, "http_status", None),
+        error_code=getattr(exc, "error_code", None),
+        category=getattr(exc, "category", None) or "failed",
+        stream=getattr(exc, "stream", None) or (os.environ.get(ENV_POSTMARK_STREAM) or DEFAULT_STREAM).strip(),
+        from_domain=_sender_domain(),
+        token_fp=getattr(exc, "token_fp", None),
+        reason=reason,
+    )
+
+
 def send(message: Message) -> None:
     message.to = message.to.strip().lower()
-    get_mailer().send(message)
+    if not _REQUEST_ID.get():
+        begin_request()
+    stream = (os.environ.get(ENV_POSTMARK_STREAM) or DEFAULT_STREAM).strip()
+    token = (os.environ.get(ENV_POSTMARK_TOKEN) or "").strip()
+    _emit(
+        "MAIL_SEND_ATTEMPT", kind=message.kind, provider=provider_name(),
+        stream=stream, from_domain=_sender_domain(),
+        token_fp=token_fingerprint(token) if token else None,
+    )
+    try:
+        result = get_mailer().send(message)
+    except Exception as exc:
+        log_outcome(message.kind, exc)
+        raise
+    log_outcome(message.kind, result=result if isinstance(result, SendResult) else None)
 
 
 # ---- message builders (plain text, no tracking, no marketing) ---------------

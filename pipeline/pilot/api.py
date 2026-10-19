@@ -14,7 +14,7 @@ import time
 from collections import deque
 from urllib.parse import unquote
 
-from pipeline.auth import throttle
+from pipeline.auth import mail, throttle
 from pipeline.auth.service import (
     AuthError, logout, request_password_reset, complete_password_reset, normalize_email,
 )
@@ -122,9 +122,12 @@ def _route(h, platform: Platform, conn, method, path, query, body):
             if not isinstance(email, str):
                 raise PilotError("invalid_request", status=400)
             email = email.strip().lower()
+            mail.begin_request()
             if throttle.pilot.hit("signup_ip", str(ip or "unknown")):
+                mail.note_rate_limit("ip")
                 raise PilotError("too_many_requests", status=429)
             if email and throttle.pilot.hit("signup_email", email):
+                mail.note_rate_limit("email")
                 return h._json(202, {"status": "check_email"})
             return h._json(202, accounts.request_contractor_signup(conn, platform, body, ip=ip, ua=ua))
         if path == "/api/pilot/auth/complete-signup":
