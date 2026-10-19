@@ -45,3 +45,11 @@
 @media(max-width:1080px){.hero{grid-template-columns:1fr 1fr}.product-panel{padding:30px 24px}}
 @media(max-width:800px){.hero{grid-template-columns:1fr}.hero-visual{padding:0;max-width:none}.path-grid{grid-template-columns:1fr}.path-card.supplier{border-left:0;border-top:1px solid #728c9a}.product-panel{padding:32px 26px}.roadmap-stack{margin-top:24px}}
 @media(max-width:480px){.hero-visual{padding:0}.visual-head{font-size:9px}.visual-stage{padding-left:22px}.visual-stage .stage-row strong{font-size:19px}.visual-stage .stage-row small{font-size:11px}.split-mini{grid-template-columns:1fr}.path-card,.path-card.supplier{padding:28px}.path-card h3{font-size:31px}.product-panel{padding:25px 19px}.workspace-title{font-size:25px}.panel-top{font-size:9px}}
+
+/* Type system: confident enterprise headlines, readable operational copy */
+body{font-family:"DM Sans","Segoe UI",Arial,sans-serif;letter-spacing:.005em}
+h1,h2,h3,.brand,.art-quote,.workspace-title,.roadmap-stack strong,.visual-stage .stage-row strong{font-family:"Manrope","Segoe UI",Arial,sans-serif;letter-spacing:-.055em}
+h1,h2,h3{font-weight:800}
+.lede,.audience-copy>p,.section-heading p,.roadmap p{font-family:"DM Sans","Segoe UI",Arial,sans-serif;font-weight:400;letter-spacing:0}
+.brand{font-weight:800;letter-spacing:-.055em}
+.visual-stage .stage-row strong{font-weight:700}
