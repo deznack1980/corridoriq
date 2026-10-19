@@ -1,0 +1,47 @@
+/* V3: editorial compositions instead of nested dashboard cards. */
+.hero{grid-template-columns:minmax(0,1.2fr) minmax(330px,.8fr)}
+.hero-visual{padding:0;background:transparent;border:0;box-shadow:none;backdrop-filter:none;position:relative}
+.hero-visual:before{display:none}
+.visual-head{border-bottom:1px solid rgba(255,209,126,.5);padding:0 0 17px;margin:0 0 28px;font-size:11px;color:#f7e9cd}
+.visual-stage,.visual-stage.middle,.visual-stage.final{background:transparent;border:0;border-left:2px solid rgba(255,200,102,.58);border-radius:0;margin:0 0 0 13px;padding:10px 0 23px 30px;position:relative}
+.visual-stage:before{content:"";position:absolute;left:-8px;top:11px;width:12px;height:12px;border:2px solid #f7c56d;border-radius:50%;background:#0a2538;box-shadow:0 0 0 7px #e9b95922}
+.visual-stage.final{border-left-color:transparent}
+.visual-stage .stage-row strong{font-size:clamp(20px,2vw,27px);letter-spacing:-.045em}
+.visual-stage .stage-row small{font-size:13px;color:#d3e0e8}
+.visual-stage .stage-icon{font-size:35px;color:#f5bf64;opacity:.9}
+.step{font-size:10px;color:#ffd07a}
+.connector{display:none}
+.signal-lines{max-width:250px}
+.tagrow span{background:rgba(9,27,45,.52);border:1px solid rgba(249,207,135,.35);color:#e6edf0}
+.split-mini{gap:16px}
+.split-mini div{background:rgba(4,20,34,.5);border-top:1px solid #e9bd71;border-radius:0;padding:15px 0}
+.split-mini strong{font-size:15px}
+.path-grid{gap:0;border-top:1px solid #6a8291;border-bottom:1px solid #6a8291}
+.path-card,.path-card.supplier{border:0;border-radius:0;min-height:440px;padding:38px 42px;background:linear-gradient(140deg,rgba(4,21,36,.3),rgba(4,21,36,.83)),url("https://commons.wikimedia.org/wiki/Special:FilePath/Phoenix_Skyline_2025.jpg?width=1280") center/cover;box-shadow:inset 0 0 120px #061b2b44}
+.path-card.supplier{border-left:1px solid #728c9a;background:linear-gradient(140deg,rgba(11,37,53,.43),rgba(4,21,36,.88)),url("https://commons.wikimedia.org/wiki/Special:FilePath/Phoenix_Skyline_2025.jpg?width=1280") 70%/cover}
+.path-card:after{display:none}
+.path-card h3{font-size:clamp(35px,3.2vw,48px);margin-top:90px;text-shadow:0 3px 15px #0009}
+.path-card p{font-size:15px;color:#f2f5f5}
+.card-link{border-top:1px solid #c8a777}
+.product-panel{position:relative;isolation:isolate;border:0;border-radius:0;background:linear-gradient(140deg,#16394e 0%,#0b2437 90%);box-shadow:0 25px 70px #0008;padding:42px 40px 28px;min-width:0;overflow:hidden}
+.product-panel:before{content:"";position:absolute;inset:0 0 auto auto;width:65%;height:45%;background:radial-gradient(ellipse at top right,#cda4533b,transparent 68%);z-index:-1;pointer-events:none}
+.product-panel:after{content:"";position:absolute;inset:0;border:1px solid #bca06b99;pointer-events:none}
+.panel-top{flex-wrap:wrap;row-gap:12px;margin-bottom:40px;color:#f1dfbf}
+.pill{white-space:nowrap}
+.workspace-title{font-size:clamp(25px,2.5vw,36px);gap:12px;align-items:center;overflow-wrap:anywhere}
+.workspace-title span{flex-shrink:0}
+.workspace-row{gap:14px;min-width:0;padding:22px 0}
+.workspace-row>div{flex:1;min-width:0}
+.workspace-row strong{font-size:15px}
+.workspace-row small{font-size:12px;line-height:1.5}
+.workspace-row .muted{flex-shrink:0}
+.workspace-icon{border:0;border-radius:0;border-bottom:2px solid #e8b76c;font-size:27px}
+.roadmap-stack{gap:0;border-left:2px solid #b38a4b}
+.roadmap-stack>div{background:transparent;border:0;border-bottom:1px solid #526c80;border-radius:0;padding:25px 32px}
+.roadmap-stack strong{font-size:26px}
+.how-grid article{border-top:2px solid #aa854d}
+.how-grid article>span{font-size:18px}
+.supplier-art{border:0;border-radius:0}
+@media(max-width:1080px){.hero{grid-template-columns:1fr 1fr}.product-panel{padding:30px 24px}}
+@media(max-width:800px){.hero{grid-template-columns:1fr}.hero-visual{padding:0;max-width:none}.path-grid{grid-template-columns:1fr}.path-card.supplier{border-left:0;border-top:1px solid #728c9a}.product-panel{padding:32px 26px}.roadmap-stack{margin-top:24px}}
+@media(max-width:480px){.hero-visual{padding:0}.visual-head{font-size:9px}.visual-stage{padding-left:22px}.visual-stage .stage-row strong{font-size:19px}.visual-stage .stage-row small{font-size:11px}.split-mini{grid-template-columns:1fr}.path-card,.path-card.supplier{padding:28px}.path-card h3{font-size:31px}.product-panel{padding:25px 19px}.workspace-title{font-size:25px}.panel-top{font-size:9px}}
