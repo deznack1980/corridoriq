@@ -1,386 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="CorridorIQ identifies construction projects early from real public permit data, estimates likely material needs, and connects contractors with suppliers." />
-  <title>CorridorIQ — Construction Procurement Intelligence</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="CorridorIQ connects construction opportunity intelligence with simpler material sourcing for contractors and suppliers.">
+<title>CorridorIQ | Construction Intelligence & Procurement</title>
+<link rel="stylesheet" href="homepage.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-content">
-        <div class="logo-section">
-          <div class="logo-icon">CIQ</div>
-          <div class="logo-text">
-            <p class="title">CorridorIQ</p>
-            <p class="subtitle">Real permit data, before the supply house sees it</p>
-          </div>
-        </div>
-        <nav class="nav-links">
-          <a href="dashboard.html" class="nav-item">Dashboard</a>
-          <a href="contractors.html" class="nav-item">Contractor Matching</a>
-          <a href="reports.html?report=qualifying" class="nav-item">Reports</a>
-          <a href="#plumbing" class="nav-item">Plumbing Permits</a>
-          <a href="#services" class="nav-item">Services</a>
-          <a href="#pricing" class="nav-item">Pricing</a>
-          <a href="#contact" class="nav-item">Request Leads</a>
-        </nav>
-        <a href="dashboard.html" class="btn btn-orange get-prospect-btn">Open Dashboard</a>
-        <button type="button" class="mobile-menu-toggle" aria-label="Toggle Navigation">&#9776;</button>
-      </div>
-    </header>
-
-    <!-- Hero Section -->
-    <main>
-      <section class="hero-section">
-        <div class="hero-background"></div>
-        <div class="hero-content">
-          <div class="hero-text">
-            <span class="location-tag">Live in 7 Arizona markets &bull; 6 more tracked</span>
-            <h1 class="hero-title">Find construction projects before your competitors do.</h1>
-            <p class="hero-description">
-              CorridorIQ ingests real public permit data, estimates likely material needs, and builds
-              contractor profiles &mdash; so plumbing suppliers can reach contractors, remodelers, and
-              builders while they're still specifying materials, not after they've already ordered.
-            </p>
-            <div class="hero-buttons">
-              <a href="dashboard.html" class="btn btn-orange btn-large">
-                View Live Dashboard <span class="arrow-right">&rarr;</span>
-              </a>
-              <a href="reports.html?report=qualifying" class="btn btn-outline btn-large">Qualifying Permits Report</a>
-            </div>
-          </div>
-          <div class="opportunity-card-wrapper">
-            <div class="opportunity-card">
-              <span class="card-badge">Sample Plumbing Lead</span>
-              <div class="opportunity-header">
-                <div class="score-section">
-                  <p class="score-label">Opportunity Score</p>
-                  <p class="score-value"><strong>88</strong> / 100</p>
-                </div>
-                <div class="map-pin">&#128295;</div>
-              </div>
-              <div class="lead-info">
-                <p class="lead-label">Contractor</p>
-                <h3 class="lead-title">Desert Ridge Plumbing LLC</h3>
-                <ul class="lead-signals">
-                  <li>Commercial tenant improvement permit issued this week</li>
-                  <li>Plumbing scope likely: PEX, valves, water heaters</li>
-                  <li>Mesa, AZ &mdash; jurisdiction connected</li>
-                  <li>Target buyer: project manager or purchasing contact</li>
-                </ul>
-              </div>
-              <div class="stats-grid">
-                <div class="stat-box">
-                  <p class="stat-number">1</p>
-                  <p class="stat-label">Jurisdiction connected</p>
-                </div>
-                <div class="stat-box">
-                  <p class="stat-number">12</p>
-                  <p class="stat-label">In progress</p>
-                </div>
-                <div class="stat-box">
-                  <p class="stat-number">7</p>
-                  <p class="stat-label">Tracked tables</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Platform Positioning -->
-      <section class="platform-intro-section">
-        <div class="platform-intro-banner">
-          <p>CorridorIQ helps suppliers identify demand before competitors by tracking public permits, construction activity, industrial expansion, and logistics signals.</p>
-        </div>
-      </section>
-
-      <!-- Plumbing Permit Intelligence -->
-      <section id="plumbing" class="plumbing-section">
-        <div class="content-wrapper plumbing-content">
-          <div class="plumbing-text">
-            <p class="section-subtitle gold-text">Plumbing Permit Intelligence</p>
-            <h2 class="plumbing-headline">Know which contractors are pulling permits before they walk into a supply house.</h2>
-            <p class="section-description">
-              CorridorIQ tracks plumbing-related permits across Arizona to identify contractors, remodelers,
-              builders, and commercial projects likely to need materials, delivery, quotes, or supplier support.
-              Every lead traces back to a real public permit record &mdash; see the
-              <a href="dashboard.html" class="inline-link">live dashboard</a> for current coverage.
-            </p>
-            <p class="section-subtitle gold-text">Permit types we track</p>
-            <div class="permit-types-grid">
-              <div class="permit-type-item">Plumbing permits</div>
-              <div class="permit-type-item">Gas line permits</div>
-              <div class="permit-type-item">Water heater replacements</div>
-              <div class="permit-type-item">Sewer permits</div>
-              <div class="permit-type-item">Backflow permits</div>
-              <div class="permit-type-item">Pool plumbing</div>
-              <div class="permit-type-item">Remodel permits</div>
-              <div class="permit-type-item">Tenant improvements</div>
-              <div class="permit-type-item">New residential construction</div>
-              <div class="permit-type-item">New commercial construction</div>
-            </div>
-          </div>
-          <div class="plumbing-card-wrapper">
-            <div class="opportunity-card">
-              <span class="card-badge">Sample Plumbing Lead</span>
-              <div class="opportunity-header">
-                <div class="score-section">
-                  <p class="score-label">Opportunity Score</p>
-                  <p class="score-value"><strong>88</strong> / 100</p>
-                </div>
-                <div class="map-pin">&#128295;</div>
-              </div>
-              <div class="lead-info">
-                <p class="lead-label">Contractor</p>
-                <h3 class="lead-title">Desert Ridge Plumbing LLC</h3>
-                <div class="lead-meta">
-                  <div class="lead-meta-item">
-                    <p class="meta-label">Permit Type</p>
-                    <p class="meta-value">Commercial Tenant Improvement</p>
-                  </div>
-                  <div class="lead-meta-item">
-                    <p class="meta-label">Location</p>
-                    <p class="meta-value">Mesa, AZ</p>
-                  </div>
-                  <div class="lead-meta-item">
-                    <p class="meta-label">Likely Materials</p>
-                    <p class="meta-value">PEX fittings, valves, water heaters, gas line supplies</p>
-                  </div>
-                  <div class="lead-meta-item">
-                    <p class="meta-label">Best Buyer</p>
-                    <p class="meta-value">Project manager or purchasing contact</p>
-                  </div>
-                </div>
-                <ul class="lead-signals">
-                  <li>Permit issued this week</li>
-                  <li>Commercial remodel</li>
-                  <li>Plumbing scope likely</li>
-                  <li>Material list opportunity</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Services -->
-      <section id="services" class="services-section">
-        <div class="content-wrapper">
-          <p class="section-subtitle">What we sell</p>
-          <h2 class="section-title">One platform, two intelligence modules.</h2>
-          <p class="module-overlap-note">
-            CorridorIQ runs on the same public-signal engine &mdash; permits, construction activity, hiring, and
-            facility data &mdash; to power two connected products. Suppliers use the plumbing module to find
-            contractors before they buy materials. Carriers and brokers use the freight module to find shippers
-            before they book capacity.
-          </p>
-
-          <div class="module-group">
-            <div class="module-group-header">
-              <h3 class="module-group-title">Plumbing Permit Intelligence</h3>
-              <span class="module-group-tag">For suppliers &mdash; primary focus</span>
-            </div>
-            <div class="cards-grid services-grid">
-              <article class="card service-card">
-                <div class="icon-bg">&#128295;</div>
-                <h3>Plumbing Permit Lead Reports</h3>
-                <p>Scored lists of Arizona plumbing, gas line, water heater, sewer, and remodel permits, updated as contractors pull them.</p>
-              </article>
-              <article class="card service-card">
-                <div class="icon-bg">&#128202;</div>
-                <h3>Contractor Opportunity Scoring</h3>
-                <p>Every contractor and project is scored on likely material need, project scope, and urgency so your sales team calls the right accounts first.</p>
-              </article>
-              <article class="card service-card overlap-card">
-                <span class="card-badge">Both modules</span>
-                <div class="icon-bg">&#128188;</div>
-                <h3>Supplier Sales Lists</h3>
-                <p>One signal engine, filtered for you: plumbing suppliers get contractor and project lists, freight and staffing providers get shipper and facility lists.</p>
-              </article>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Pricing -->
-      <section id="pricing" class="pricing-section">
-        <div class="content-wrapper">
-          <p class="section-subtitle gold-text">Pricing</p>
-          <h2 class="section-title">Plans for suppliers and carriers.</h2>
-          <p class="section-description">
-            Every plan draws from the same permit, construction, and hiring signal engine. Choose the coverage
-            that matches how you sell.
-          </p>
-          <div class="pricing-grid">
-            <div class="pricing-card">
-              <p class="pricing-tier">Starter</p>
-              <p class="pricing-price">$299 <span class="price-period">/ month</span></p>
-              <ul class="pricing-features">
-                <li>25 scored leads per month</li>
-                <li>Arizona plumbing permit coverage</li>
-                <li>Basic contractor profiles</li>
-              </ul>
-              <button type="button" class="btn btn-outline btn-large full-width">Get Started</button>
-            </div>
-            <div class="pricing-card featured">
-              <span class="pricing-badge">Most Popular</span>
-              <p class="pricing-tier">Growth</p>
-              <p class="pricing-price">$999 <span class="price-period">/ month</span></p>
-              <ul class="pricing-features">
-                <li>100 scored leads per month</li>
-                <li>Plumbing + industrial coverage</li>
-                <li>Weekly opportunity report</li>
-                <li>Contractor and operations contact targeting</li>
-              </ul>
-              <button type="button" class="btn btn-orange btn-large full-width">Get Started</button>
-            </div>
-            <div class="pricing-card">
-              <p class="pricing-tier">Enterprise</p>
-              <p class="pricing-price">Custom</p>
-              <ul class="pricing-features">
-                <li>Multi-trade permit intelligence</li>
-                <li>Supplier-specific lead filters</li>
-                <li>Custom reporting</li>
-                <li>Logistics matching</li>
-              </ul>
-              <button type="button" class="btn btn-outline btn-large full-width">Contact Sales</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Who We Help -->
-      <section class="who-we-help-section">
-        <div class="content-wrapper">
-          <p class="section-subtitle orange-text">Who buys this</p>
-          <h2 class="section-title">Built for companies that make money from construction growth.</h2>
-          <div class="cards-grid help-grid">
-            <div class="card help-card">Plumbing supply houses targeting active permit contractors</div>
-            <div class="card help-card">Industrial suppliers looking for growing accounts</div>
-            <div class="card help-card">Freight brokers seeking new shipper leads</div>
-            <div class="card help-card">Box truck and hotshot operators needing direct customers</div>
-            <div class="card help-card">LTL carriers building regional lane density</div>
-            <div class="card help-card">Staffing firms targeting new logistics facilities</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Freight Module (legacy/secondary) -->
-      <section id="freight" class="freight-legacy-section">
-        <div class="content-wrapper">
-          <span class="card-badge">Secondary module</span>
-          <p class="section-subtitle orange-text">Industrial &amp; Freight Intelligence</p>
-          <h2 class="section-title">The freight module, for logistics companies.</h2>
-          <p class="section-description">
-            CorridorIQ's original module tracks industrial expansion signals for freight brokers, carriers,
-            and staffing firms. This module still uses illustrative demo data (see the Arizona Industrial
-            Opportunity Report below) &mdash; it has not yet been connected to a real data pipeline the way
-            the plumbing permit module has.
-          </p>
-          <div class="cards-grid services-grid">
-            <article class="card service-card">
-              <div class="icon-bg">&#128225;</div>
-              <h3>Industrial Opportunity Reports</h3>
-              <p>Weekly intelligence on new warehouses, manufacturers, distributors, and logistics-heavy companies across Arizona and the Southwest.</p>
-            </article>
-            <article class="card service-card">
-              <div class="icon-bg">&#128200;</div>
-              <h3>Freight Lead Database</h3>
-              <p>Scored company profiles showing who is most likely to need short-haul delivery, overflow routes, supplier runs, or warehouse transfers.</p>
-            </article>
-            <article class="card service-card">
-              <div class="icon-bg">&#129309;</div>
-              <h3>Logistics Support Matching</h3>
-              <p>We connect growing industrial companies with reliable local transportation capacity before they are forced onto generic broker channels.</p>
-            </article>
-            <article class="card service-card">
-              <div class="icon-bg">&#128666;</div>
-              <h3>Freight and Delivery Signals</h3>
-              <p>Real-time alerts on new leases, expansions, and hiring surges that signal upcoming freight and delivery demand.</p>
-            </article>
-          </div>
-
-          <div class="signals-content" style="margin-top:40px;">
-            <div>
-              <p class="section-subtitle orange-text">Freight data signals</p>
-              <h3 class="module-group-title">We look for movement before the freight appears.</h3>
-            </div>
-            <div class="signals-grid">
-              <div class="signal-item">New warehouse leases</div>
-              <div class="signal-item">Industrial permits</div>
-              <div class="signal-item">Manufacturing expansions</div>
-              <div class="signal-item">Logistics hiring activity</div>
-              <div class="signal-item">Supplier and distributor growth</div>
-              <div class="signal-item">New tenant move-ins</div>
-            </div>
-          </div>
-
-          <div class="report-content" style="margin-top:40px;">
-            <div class="report-text">
-              <p class="section-subtitle orange-text">Demo report</p>
-              <h3 class="module-group-title">The Arizona Industrial Opportunity Report (demo)</h3>
-              <p class="section-description">
-                A sample of what a scored freight/industrial report looks like, built from fictional
-                demonstration data &mdash; not yet backed by a live pipeline.
-              </p>
-              <a href="reports/demo/sample_arizona_industrial_report.md" class="btn btn-outline btn-large">Read the Demo Report</a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Contact -->
-      <section id="contact" class="contact-section">
-        <div class="content-wrapper">
-          <h2 class="section-title white-text">Request Leads</h2>
-          <form id="leadRequestForm" class="lead-form" novalidate>
-            <div class="form-row">
-              <label for="name">Name *</label>
-              <input type="text" id="name" name="name" required />
-              <small class="error-msg"></small>
-            </div>
-            <div class="form-row">
-              <label for="email">Email *</label>
-              <input type="email" id="email" name="email" required />
-              <small class="error-msg"></small>
-            </div>
-            <div class="form-row">
-              <label for="company">Company *</label>
-              <input type="text" id="company" name="company" required />
-              <small class="error-msg"></small>
-            </div>
-            <div class="form-row">
-              <label for="companyType">Company Type *</label>
-              <input type="text" id="companyType" name="companyType" required />
-              <small class="error-msg"></small>
-            </div>
-            <div class="form-row">
-              <label for="marketArea">Market Area *</label>
-              <input type="text" id="marketArea" name="marketArea" required />
-              <small class="error-msg"></small>
-            </div>
-            <div class="form-row">
-              <label for="message">Message</label>
-              <textarea id="message" name="message" rows="4"></textarea>
-              <small class="error-msg"></small>
-            </div>
-            <button type="submit" class="btn btn-orange btn-large full-width">Request Sample Leads</button>
-            <p id="formSuccess" class="form-success" aria-live="polite" style="display:none;">Thanks. Your sample lead request has been received.</p>
-          </form>
-        </div>
-      </section>
-    </main>
-
-    <footer class="site-footer">
-      <p>&copy; 2026 CorridorIQ. Construction procurement intelligence, built on real Arizona permit data.</p>
-    </footer>
-  </div>
-
-  <script src="script.js"></script>
-</body>
-</html>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar"><div class="shell navrow">
+<a class="brand" href="index.html" aria-label="CorridorIQ home"><span class="brandmark">C<span>IQ</span></span><span>Corridor<span class="brand-accent">IQ</span><small>CONSTRUCTION INTELLIGENCE</small></span></a>
+<nav class="desktopnav" aria-label="Main navigation"><a href="#how">How it works</a><a href="#contractors">Contractors</a><a href="#suppliers">Suppliers</a><a href="#roadmap">What's next</a></nav>
+<div class="navright"><a class="signin" href="login.html">Sign in <span aria-hidden="true">↗</span></a><a class="navcta" href="#paths">Explore CorridorIQ <span aria-hidden="true">→</span></a></div>
+</div></header>
+<main id="main">
+<section class="hero shell"><div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> BUILT FOR THE PEOPLE MOVING CONSTRUCTION FORWARD</div>
+<h1>From finding the job<br>to getting the <em>materials.</em></h1>
+<p class="lede">Construction intelligence meets smarter procurement. CorridorIQ helps contractors discover opportunities and source materials—and gives suppliers a clearer view of the demand coming their way.</p>
+<div class="heroactions"><a class="button primary" href="#contractors">I'm a Contractor <span aria-hidden="true">↗</span></a><a class="button secondary" href="#suppliers">I'm a Supplier <span aria-hidden="true">↗</span></a></div>
+<p class="micro">Two sides of construction. One connected platform.</p>
+</div>
+<div class="hero-visual" aria-label="Illustrative CorridorIQ workflow, not live project data">
+<div class="visual-head"><span class="signal-dot"></span><span>CORRIDORIQ / OPPORTUNITY FLOW</span><span class="concept">WORKFLOW ILLUSTRATION</span></div>
+<div class="visual-stage"><span class="step">01 / DISCOVER</span><div class="stage-row"><div><strong>Construction activity</strong><small>Public permit &amp; project signals</small></div><span class="stage-icon">⌁</span></div><div class="signal-lines"><i></i><i></i><i></i><i></i></div></div>
+<div class="connector"><span></span> INTELLIGENCE LAYER <span></span></div>
+<div class="visual-stage middle"><span class="step">02 / UNDERSTAND</span><div class="stage-row"><div><strong>Likely material demand</strong><small>Project context &amp; contractor insight</small></div><span class="stage-icon">◇</span></div><div class="tagrow"><span>Project scope</span><span>Material categories</span><span>Timing</span></div></div>
+<div class="connector"><span></span> CONNECT THE RIGHT PEOPLE <span></span></div>
+<div class="visual-stage final"><span class="step">03 / TAKE ACTION</span><div class="split-mini"><div><span>CONTRACTORS</span><strong>Source with confidence</strong></div><div><span>SUPPLIERS</span><strong>Reach demand earlier</strong></div></div></div>
+</div></section>
+<div class="divider shell"><span>THE CONNECTION IS THE ADVANTAGE</span><span>↓</span></div>
+<section id="paths" class="shell paths"><div class="section-heading"><span class="kicker">ONE PLATFORM. TWO WAYS TO WIN.</span><h2>Built for both sides<br>of the counter.</h2><p>Whether you're doing the work or supplying the materials, CorridorIQ is designed to make the next move clearer.</p></div>
+<div class="path-grid"><a class="path-card contractor" href="#contractors"><span class="card-number">01 / FOR CONTRACTORS</span><span class="path-symbol">↗</span><h3>Spend less time sourcing.<br>More time building.</h3><p>Find opportunities, organize material needs, and connect with participating suppliers—all from one place.</p><span class="card-link">Explore contractor tools <b>→</b></span></a>
+<a class="path-card supplier" href="#suppliers"><span class="card-number">02 / FOR SUPPLIERS</span><span class="path-symbol">⌁</span><h3>Know where demand<br>is headed.</h3><p>Turn construction activity and permit signals into more focused contractor outreach and sales opportunities.</p><span class="card-link">Explore supplier intelligence <b>→</b></span></a></div></section>
+<section id="how" class="how-section"><div class="shell"><div class="section-heading"><span class="kicker">HOW CORRIDORIQ WORKS</span><h2>From scattered signals<br>to a clearer next step.</h2></div><div class="how-grid"><article><span>01</span><h3>Find the signal</h3><p>Public permit and construction records reveal projects taking shape across the market.</p></article><article><span>02</span><h3>Make sense of it</h3><p>Project context and contractor information help surface likely needs and relevant opportunities—not guaranteed purchase orders.</p></article><article><span>03</span><h3>Move with purpose</h3><p>Suppliers prioritize outreach. Contractors explore project and procurement workflows as available through the platform.</p></article></div></div></section>
+<section id="contractors" class="shell audience"><div class="audience-copy"><span class="kicker">FOR THE CONTRACTOR</span><h2>Your work is complicated.<br>Your tools shouldn't be.</h2><p>Every job brings decisions about materials, timing, and suppliers. We're building a simpler way to manage the purchasing side of the work.</p><div class="feature-list"><div><span>↗</span><div><strong>Explore construction opportunities</strong><small>Discover relevant project and contractor intelligence.</small></div></div><div><span>≡</span><div><strong>Build your material list</strong><small>Organize what a job needs before requesting a quote.</small></div></div><div><span>⇄</span><div><strong>Connect with suppliers</strong><small>Procurement and ordering depend on participating supplier availability.</small></div></div></div><a class="text-cta" href="login.html">Explore contractor access <span>→</span></a><p class="availability">Free procurement access is the intended entry tier; availability of ordering features varies by integration.</p></div><div class="product-panel"><div class="panel-top"><span>CONTRACTOR WORKSPACE</span><span class="pill">PRODUCT DIRECTION</span></div><div class="workspace-title">Material request <span>↗</span></div><div class="workspace-row"><span class="workspace-icon">▦</span><div><strong>Job materials</strong><small>Build a list from your project requirements</small></div><span class="muted">01</span></div><div class="workspace-row"><span class="workspace-icon">◈</span><div><strong>Supplier connection</strong><small>Share a list with a participating supplier</small></div><span class="muted">02</span></div><div class="workspace-row"><span class="workspace-icon">✓</span><div><strong>Review &amp; confirm</strong><small>Contractor approves quantities and specifications</small></div><span class="muted">03</span></div><p class="panel-foot">Illustrative workflow • Not a live account screenshot</p></div></section>
+<section id="roadmap" class="roadmap"><div class="shell roadmap-grid"><div><span class="kicker">THE ROAD AHEAD / CONTRACTOR PRO</span><h2>Imagine the jobsite<br>working smarter.</h2><p>Our planned paid Contractor Pro experience goes beyond a material list: photograph a work area, get an AI-assisted draft of likely parts, track inventory across vehicles, and prepare replenishment requests.</p><p class="roadmap-note"><strong>In development / planned.</strong> Photo measurements, AI recommendations, live supplier pricing, and vehicle inventory are not represented as available today. Contractors will verify measurements, parts, and quantities.</p></div><div class="roadmap-stack"><div><span>01 / CAPTURE</span><strong>Photograph the job</strong><small>Document the work area</small></div><div><span>02 / PREPARE</span><strong>Draft the materials</strong><small>AI-assisted, contractor-reviewed</small></div><div><span>03 / REPLENISH</span><strong>Keep trucks ready</strong><small>Vehicle inventory and supplier connections</small></div></div></div></section>
+<section id="suppliers" class="shell audience supplier-audience"><div class="supplier-art"><span>SUPPLIER INTELLIGENCE</span><div class="art-quote">Don't wait for demand<br>to walk through<br><em>your door.</em></div><div class="art-bottom"><span>PERMIT SIGNALS</span><span>CONTRACTOR CONTEXT</span><span>EARLIER OUTREACH</span></div></div><div class="audience-copy"><span class="kicker">FOR THE SUPPLIER</span><h2>See the opportunity<br>before the order.</h2><p>CorridorIQ analyzes public construction activity to help your sales team identify projects, understand potential material demand, and focus on the contractors most relevant to your business.</p><div class="feature-list"><div><span>⌁</span><div><strong>Construction and permit intelligence</strong><small>Track project signals grounded in public records.</small></div></div><div><span>◎</span><div><strong>Contractor discovery</strong><small>Build a more targeted prospecting workflow.</small></div></div><div><span>↗</span><div><strong>Sales opportunity prioritization</strong><small>Use project context to decide who to contact next.</small></div></div></div><a class="text-cta" href="dashboard.html">Explore intelligence dashboard <span>→</span></a><a class="text-cta alt" href="reports.html?report=qualifying">View qualifying permit reports <span>→</span></a></div></section>
+<section class="final-cta"><div class="shell final-inner"><span class="kicker">THE FUTURE OF CONSTRUCTION IS CONNECTED</span><h2>Better intelligence.<br>Better connections.<br><em>Better business.</em></h2><div class="heroactions"><a class="button primary" href="#contractors">For Contractors <span>→</span></a><a class="button secondary" href="#suppliers">For Suppliers <span>→</span></a></div></div></section>
+</main>
+<footer class="footer"><div class="shell footer-inner"><a class="brand" href="index.html"><span class="brandmark">C<span>IQ</span></span><span>Corridor<span class="brand-accent">IQ</span><small>CONSTRUCTION INTELLIGENCE</small></span></a><div><a href="dashboard.html">Dashboard</a><a href="reports.html?report=qualifying">Reports</a><a href="login.html">Sign in</a></div><p>© 2026 CorridorIQ. Construction intelligence and procurement, thoughtfully connected.</p></div></footer>
+</body></html>
