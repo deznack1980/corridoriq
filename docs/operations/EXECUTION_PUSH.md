@@ -2,7 +2,9 @@
 
 ## Verified delivery
 
-Isolated unpublished Lovable preview: https://lovable.dev/projects/f6d8aa37-b31a-4688-b696-e07fe9401012 . No production replacement authorized. Its demo workflows are sample data, not connected customer operations.
+Working private customer preview: https://corridoriq-customer-preview-oct25.deznack.chatgpt.site . Reused the Lovable-generated customer frontend, repaired strict typing and stale quote state, and exported it as a separate browser-only Site. TypeScript and production build pass; 12 logic checks pass. Cloud browser reaches the private ChatGPT login gate, so visual/mobile QA remains unverified. This is sample-data demonstration, not connected customer operations. No replacement of corridoriq.pro authorized or performed.
+
+Lovable project https://lovable.dev/projects/f6d8aa37-b31a-4688-b696-e07fe9401012 remains unpublished with its original build errors: workspace credits were exhausted after consuming 5.6 credits. No plan upgrade. The repaired private Site is the review deliverable; original ad concepts remain in the prior project.
 
 Live website audit: `https://corridoriq.pro` has separate contractor/supplier pages, clear early-access limits and contact-by-email/phone, but a long three-part hero rather than the requested headline. CTAs funnel into contact rather than account onboarding. The repository default homepage is older than production. A separate design branch already contains the requested headline. Confirm the deployed commit before integrating marketing changes; never overwrite production from the default branch.
 
