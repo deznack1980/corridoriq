@@ -32,3 +32,7 @@ Cost-conscious sequence: keep Windows voice/Ollama local; run the existing sched
 ## Validation
 
 202 passed, six browser-dependent tests skipped on repository default baseline with new supervision tests. Python compilation passes. Live private portal functionality is not verified; browser audit only covers public homepage. No live supplier pricing, customer-account signup or production database access was simulated as real.
+
+## Automatic demo deployment incident — resolved
+
+Existing Cloudflare trigger `Deploy non-production branches` ran `wrangler deploy` when this development branch was pushed. It changed `sonoran-contractor-portal-demo`, which has no custom Worker domains and no corridoriq.pro Worker route. Restored the pre-session version `90aee7df-f360-4c6c-b92b-4f4a89a5eacd` at 100% traffic (deployment `8e61e0ee-d134-406b-883a-549ba68bd8f2`). Excluded only `dev/execution-push-20261025` from that trigger, preserving the existing default-branch exclusion. The public corridoriq.pro homepage still shows its original three-part headline. Future branches require deployment-trigger inspection before pushing.
